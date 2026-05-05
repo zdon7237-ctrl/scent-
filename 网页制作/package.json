@@ -1,0 +1,15 @@
+{
+  "name": "scent-archive-static",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "node scripts/build-script.mjs && eleventy",
+    "start": "node server/src/app.mjs",
+    "serve": "eleventy --serve"
+  },
+  "devDependencies": {
+    "@11ty/eleventy": "^3.0.0",
+    "esbuild": "^0.28.0"
+  }
+}

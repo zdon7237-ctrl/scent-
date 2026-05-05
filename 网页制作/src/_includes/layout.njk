@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <meta name="description" content="{{ description }}">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body data-page="{{ pageKey }}">
+    <a class="skip-link" href="#main">跳到主要内容</a>
+
+    {% include "header.njk" %}
+
+    <main id="main"{% if mainClass %} class="{{ mainClass }}"{% endif %}{% if mainAttributes %} {{ mainAttributes | safe }}{% endif %}>
+      {{ content | safe }}
+    </main>
+
+    {% include "footer.njk" %}
+    {% include "cart-shell.njk" %}
+
+    <script src="data.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

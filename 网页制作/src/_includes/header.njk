@@ -1,0 +1,36 @@
+<div class="notice">
+  <span>新客试香套装上线</span>
+  <span>满 ¥599 顺丰包邮</span>
+  <span>工作室试香可预约</span>
+</div>
+
+<header class="site-header" data-header>
+  <a class="brand-lockup" href="index.html" aria-label="气味档案首页">
+    <span class="brand-mark">SA</span>
+    <span><strong>气味档案</strong><small>Scent Archive</small></span>
+  </a>
+  <button class="nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="primary-nav">
+    <span></span><span></span>
+  </button>
+  <nav class="primary-nav" id="primary-nav" data-nav aria-label="主导航">
+    <a href="index.html" data-nav="home"{% if pageKey == "home" %} class="active"{% endif %}>首页</a>
+    <a href="shop.html" data-nav="shop"{% if pageKey == "shop" %} class="active"{% endif %}>香水</a>
+    <a href="brands.html" data-nav="brands"{% if pageKey == "brands" %} class="active"{% endif %}>品牌</a>
+    <a href="samples.html" data-nav="samples"{% if pageKey == "samples" %} class="active"{% endif %}>试香</a>
+    <a href="guide.html" data-nav="guide"{% if pageKey == "guide" %} class="active"{% endif %}>选香指南</a>
+    <a href="journal.html" data-nav="journal"{% if pageKey == "journal" %} class="active"{% endif %}>Journal</a>
+    <a href="about.html" data-nav="about"{% if pageKey == "about" %} class="active"{% endif %}>关于我们</a>
+  </nav>
+  <div class="header-actions">
+    <form class="site-search" data-site-search>
+      <label>
+        <span>搜索</span>
+        <input type="search" data-site-search-input placeholder="品牌、香调、场景">
+      </label>
+    </form>
+    <div class="auth-actions" data-auth-actions>
+      <a class="text-link" href="login.html">登录</a>
+    </div>
+    <button class="cart-button" type="button" data-open-cart>购物车 <span data-cart-count>0</span></button>
+  </div>
+</header>

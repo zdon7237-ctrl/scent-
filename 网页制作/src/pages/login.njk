@@ -1,0 +1,21 @@
+---
+layout: layout.njk
+title: "会员登录 | 气味档案"
+description: "登录气味档案会员账号，查看积分、等级、订单和会员折扣。"
+pageKey: "account"
+permalink: login.html
+---
+
+<section class="page-hero">
+  <p class="eyebrow">Member login</p>
+  <h1>会员登录</h1>
+  <p>登录后可累积积分、查看会员等级，并在购物车中享受对应会员折扣。</p>
+</section>
+<section class="section account-section">
+  <form class="account-form" data-login-form>
+    <label class="field-label">邮箱或手机<input name="account" autocomplete="username" required></label>
+    <label class="field-label">密码<input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="button button-primary" type="submit">登录</button>
+    <p>还没有账号？<a class="text-link" href="register.html">注册新会员</a></p>
+  </form>
+</section>
