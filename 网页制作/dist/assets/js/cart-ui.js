@@ -17,8 +17,11 @@ export function cartMarkup(compact = true) {
     return `
       <div class="cart-empty">
         <h2>购物车是空的</h2>
-        <p>可以先从新品、试香套装或选香问卷开始。</p>
-        <a class="button button-primary" href="shop.html">探索香水</a>
+        <p>可以先从试香套装降低盲买风险，也可以直接进入香水列表筛选。</p>
+        <div class="button-row">
+          <a class="button button-primary" href="samples.html">先选试香</a>
+          <a class="button button-secondary" href="shop.html">探索香水</a>
+        </div>
       </div>
     `;
   }

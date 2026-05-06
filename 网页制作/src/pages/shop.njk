@@ -8,11 +8,16 @@ permalink: shop.html
 
       <section class="page-hero shop-hero">
         <p class="eyebrow">Fragrances</p>
-        <h1>香水列表</h1>
-        <p>从香调、场景、品牌和价格开始缩小范围，找到适合日常、礼物或收藏的气味。</p>
+        <h1>按气味、场景和风险筛选香水。</h1>
+        <p>从香调、场景、品牌和价格开始缩小范围。每张商品卡都会给出适合场景，帮助新手先判断方向。</p>
       </section>
       <section class="shop-layout section-tight">
-        <form class="filters-panel" data-shop-filters>
+        <form class="filters-panel" id="shop-filters" data-shop-filters>
+          <div class="filter-intro">
+            <p class="eyebrow">Filter</p>
+            <h2>缩小选择范围</h2>
+            <p>不确定时先选“场景”或“香调”，比只看品牌更容易开始。</p>
+          </div>
           <label class="field-label">搜索关键词<input name="q" type="search" placeholder="茶香、木质、品牌名"></label>
           <div class="filter-group"><h2>香调</h2><div class="chip-group" data-note-filter></div></div>
           <label class="field-label">品牌<select name="brand" data-brand-filter></select></label>
@@ -45,7 +50,10 @@ permalink: shop.html
           <button class="button button-secondary full" type="reset">清除筛选</button>
         </form>
         <div class="shop-results">
-          <div class="result-toolbar"><p data-result-count>0 件作品</p><a class="text-link" href="samples.html">不确定？先试香</a></div>
+          <div class="result-toolbar">
+            <p data-result-count>0 件作品</p>
+            <a class="text-link" href="samples.html">不确定？先试香</a>
+          </div>
           <div class="product-grid" data-shop-grid></div>
         </div>
       </section>

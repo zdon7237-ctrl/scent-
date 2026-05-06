@@ -81,9 +81,28 @@ if (hasCatalogData) {
     return Number(rate) >= 1 ? "无折扣" : `${Math.round(Number(rate) * 100)} 折`;
   }
 
+  function sceneLabels(ids = []) {
+    return ids
+      .map((id) => data.scenes.find((scene) => scene.id === id)?.label)
+      .filter(Boolean);
+  }
+
+  function shortText(text = "", max = 58) {
+    return text.length > max ? `${text.slice(0, max)}...` : text;
+  }
+
+  function setFormMessage(form, message, type = "") {
+    const node = $("[data-form-message]", form);
+    if (!node) return;
+    node.textContent = message;
+    node.classList.toggle("is-error", type === "error");
+    node.classList.toggle("is-success", type === "success");
+  }
+
   function productCard(product, options = {}) {
     const compact = options.compact ? " product-card-compact" : "";
     const favorite = state.favorites.has(product.id);
+    const scenes = sceneLabels(product.scenes).slice(0, 2).join(" / ");
     return `
       <article class="product-card${compact}">
         <a class="product-card-media" href="product.html?id=${product.id}" ${imageStyle(product.image)} aria-label="查看 ${product.name}"></a>
@@ -94,13 +113,15 @@ if (hasCatalogData) {
           </div>
           <h3><a href="product.html?id=${product.id}">${product.name}</a></h3>
           <p>${product.family} · ${product.concentration}</p>
+          <p class="scene-line">适合：${scenes || product.bestFor}</p>
+          <p class="card-note">${shortText(product.buyer || product.description)}</p>
           <div class="tag-row">${tagList(product.notes)}</div>
           <div class="price-row">
             <strong>${formatPrice(product.price)}</strong>
             <span>${product.volume}</span>
           </div>
           <div class="card-actions">
-            <button class="button button-secondary" type="button" data-favorite="${product.id}">
+            <button class="button button-secondary" type="button" data-favorite="${product.id}" aria-pressed="${favorite}">
               ${favorite ? "已收藏" : "收藏"}
             </button>
             <button class="button button-primary" type="button" data-add-cart="${product.id}">加入购物车</button>
@@ -170,6 +191,7 @@ if (hasCatalogData) {
       toggle.addEventListener("click", () => {
         const open = header.classList.toggle("nav-open");
         toggle.setAttribute("aria-expanded", String(open));
+        toggle.setAttribute("aria-label", open ? "关闭主导航" : "打开主导航");
       });
     }
 
@@ -179,6 +201,7 @@ if (hasCatalogData) {
         link.addEventListener("click", () => {
           header?.classList.remove("nav-open");
           toggle?.setAttribute("aria-expanded", "false");
+          toggle?.setAttribute("aria-label", "打开主导航");
         });
       });
     }
@@ -301,7 +324,16 @@ if (hasCatalogData) {
       if (result) result.textContent = `${filtered.length} 件作品`;
       grid.innerHTML = filtered.length
         ? filtered.map((product) => productCard(product)).join("")
-        : `<div class="empty-state">当前筛选没有匹配作品。可以清除筛选，或先从试香套装开始。</div>`;
+        : `
+          <div class="empty-state">
+            <h2>当前筛选没有匹配作品</h2>
+            <p>可以清除筛选，或先从试香套装开始，降低第一次选择的风险。</p>
+            <div class="button-row">
+              <button class="button button-secondary" type="reset" form="${form?.id || ""}">清除筛选</button>
+              <a class="button button-primary" href="samples.html">查看试香套装</a>
+            </div>
+          </div>
+        `;
     }
 
     render();
@@ -337,6 +369,16 @@ if (hasCatalogData) {
           <h1>${product.name}</h1>
           <p>${product.description}</p>
           <div class="tag-row">${tagList(product.notes)}</div>
+          <div class="purchase-guidance" aria-label="购买前判断">
+            <div>
+              <span>适合场景</span>
+              <strong>${product.bestFor}</strong>
+            </div>
+            <div>
+              <span>盲买提醒</span>
+              <p>${product.caution}</p>
+            </div>
+          </div>
           <div class="purchase-box">
             <div><span>价格</span><strong>${formatPrice(product.price)}</strong></div>
             <div><span>容量</span><strong>${product.volume}</strong></div>
@@ -345,7 +387,8 @@ if (hasCatalogData) {
           </div>
           <div class="purchase-actions">
             <button class="button button-primary" type="button" data-add-cart="${product.id}">加入购物车</button>
-            <button class="button button-secondary" type="button" data-favorite="${product.id}">${state.favorites.has(product.id) ? "已收藏" : "收藏"}</button>
+            <a class="button button-secondary" href="samples.html">不确定，先试香</a>
+            <button class="button button-secondary" type="button" data-favorite="${product.id}" aria-pressed="${state.favorites.has(product.id)}">${state.favorites.has(product.id) ? "已收藏" : "收藏"}</button>
           </div>
         </div>
       </section>
@@ -366,6 +409,10 @@ if (hasCatalogData) {
           <p>${product.buyer}</p>
           <p><strong>适合：</strong>${product.bestFor}</p>
           <p><strong>提醒：</strong>${product.caution}</p>
+          <div class="detail-cta">
+            <span class="status-badge">Sample first</span>
+            <a class="text-link" href="samples.html">担心盲买？先从试香套装开始</a>
+          </div>
         </article>
         <article>
           <h2>规格与服务</h2>
@@ -561,15 +608,22 @@ if (hasCatalogData) {
       loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         const formData = new FormData(loginForm);
+        const submitButton = loginForm.querySelector("button[type='submit']");
+        setFormMessage(loginForm, "正在登录...");
+        if (submitButton) submitButton.disabled = true;
         try {
           await loginMember({
             account: formData.get("account"),
             password: formData.get("password")
           });
+          setFormMessage(loginForm, "登录成功，正在进入会员中心。", "success");
           showToast("登录成功。");
           window.location.href = "account.html";
         } catch (error) {
+          setFormMessage(loginForm, error.message, "error");
           showToast(error.message);
+        } finally {
+          if (submitButton) submitButton.disabled = false;
         }
       });
     }
@@ -579,6 +633,9 @@ if (hasCatalogData) {
       registerForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         const formData = new FormData(registerForm);
+        const submitButton = registerForm.querySelector("button[type='submit']");
+        setFormMessage(registerForm, "正在创建会员账号...");
+        if (submitButton) submitButton.disabled = true;
         try {
           await registerMember({
             name: formData.get("name"),
@@ -586,10 +643,14 @@ if (hasCatalogData) {
             phone: formData.get("phone"),
             password: formData.get("password")
           });
+          setFormMessage(registerForm, "注册成功，正在进入会员中心。", "success");
           showToast("注册成功。");
           window.location.href = "account.html";
         } catch (error) {
+          setFormMessage(registerForm, error.message, "error");
           showToast(error.message);
+        } finally {
+          if (submitButton) submitButton.disabled = false;
         }
       });
     }
@@ -665,7 +726,7 @@ if (hasCatalogData) {
                 <p>${item.note || ""}${item.expiresAt ? ` · 有效至 ${new Date(item.expiresAt).toLocaleDateString("zh-CN")}` : ""}</p>
               </div>
               <strong>${item.points > 0 ? "+" : ""}${item.points}</strong>
-              <span>${new Date(item.createdAt).toLocaleString("zh-CN")}</span>
+              <span class="status-badge">${new Date(item.createdAt).toLocaleDateString("zh-CN")}</span>
             </article>
           `).join("") : `<div class="empty-state">暂无积分流水。</div>`}
         </div>
@@ -792,7 +853,7 @@ if (hasCatalogData) {
                 <p>${order.trackingNo ? `物流单号：${order.trackingNo}` : "等待后台处理"}</p>
               </div>
               <strong>${order.totalPoints} 积分</strong>
-              <span>${redemptionStatusLabel(order.status)}</span>
+              <span class="status-badge">${redemptionStatusLabel(order.status)}</span>
             </article>
           `).join("") : `<div class="empty-state">暂无兑换记录。</div>`}
         </div>
@@ -818,7 +879,7 @@ if (hasCatalogData) {
                 <p>会员折扣：${moneyText(order.memberDiscountAmountYuan)} · ${orderPointsText(order)}</p>
               </div>
               <strong>${moneyText(order.paidAmountYuan)}</strong>
-              <span>${orderStatusLabel(order.status)}</span>
+              <span class="status-badge">${orderStatusLabel(order.status)}</span>
               ${order.status === "pending_payment" ? `<button class="button button-secondary" type="button" data-admin-pay="${order.id}">开发确认支付</button>` : ""}
               ${["paid", "shipped"].includes(order.status) ? `<button class="button button-secondary" type="button" data-confirm-receipt="${order.id}">确认收货</button>` : ""}
             </article>
@@ -1160,6 +1221,7 @@ if (hasCatalogData) {
     writeStore("sa_favorites", Array.from(state.favorites));
     $all(`[data-favorite="${CSS.escape(id)}"]`).forEach((button) => {
       button.textContent = state.favorites.has(id) ? "已收藏" : "收藏";
+      button.setAttribute("aria-pressed", String(state.favorites.has(id)));
     });
   }
 

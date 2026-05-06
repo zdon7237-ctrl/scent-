@@ -273,8 +273,11 @@
       return `
       <div class="cart-empty">
         <h2>\u8D2D\u7269\u8F66\u662F\u7A7A\u7684</h2>
-        <p>\u53EF\u4EE5\u5148\u4ECE\u65B0\u54C1\u3001\u8BD5\u9999\u5957\u88C5\u6216\u9009\u9999\u95EE\u5377\u5F00\u59CB\u3002</p>
-        <a class="button button-primary" href="shop.html">\u63A2\u7D22\u9999\u6C34</a>
+        <p>\u53EF\u4EE5\u5148\u4ECE\u8BD5\u9999\u5957\u88C5\u964D\u4F4E\u76F2\u4E70\u98CE\u9669\uFF0C\u4E5F\u53EF\u4EE5\u76F4\u63A5\u8FDB\u5165\u9999\u6C34\u5217\u8868\u7B5B\u9009\u3002</p>
+        <div class="button-row">
+          <a class="button button-primary" href="samples.html">\u5148\u9009\u8BD5\u9999</a>
+          <a class="button button-secondary" href="shop.html">\u63A2\u7D22\u9999\u6C34</a>
+        </div>
       </div>
     `;
     }
@@ -465,9 +468,23 @@
       return new URLSearchParams(window.location.search);
     }, discountLabel = function(rate) {
       return Number(rate) >= 1 ? "\u65E0\u6298\u6263" : `${Math.round(Number(rate) * 100)} \u6298`;
+    }, sceneLabels = function(ids = []) {
+      return ids.map((id) => {
+        var _a;
+        return (_a = catalogData.scenes.find((scene) => scene.id === id)) == null ? void 0 : _a.label;
+      }).filter(Boolean);
+    }, shortText = function(text = "", max = 58) {
+      return text.length > max ? `${text.slice(0, max)}...` : text;
+    }, setFormMessage = function(form, message, type = "") {
+      const node = $2("[data-form-message]", form);
+      if (!node) return;
+      node.textContent = message;
+      node.classList.toggle("is-error", type === "error");
+      node.classList.toggle("is-success", type === "success");
     }, productCard = function(product, options = {}) {
       const compact = options.compact ? " product-card-compact" : "";
       const favorite = state.favorites.has(product.id);
+      const scenes = sceneLabels(product.scenes).slice(0, 2).join(" / ");
       return `
       <article class="product-card${compact}">
         <a class="product-card-media" href="product.html?id=${product.id}" ${imageStyle(product.image)} aria-label="\u67E5\u770B ${product.name}"></a>
@@ -478,13 +495,15 @@
           </div>
           <h3><a href="product.html?id=${product.id}">${product.name}</a></h3>
           <p>${product.family} \xB7 ${product.concentration}</p>
+          <p class="scene-line">\u9002\u5408\uFF1A${scenes || product.bestFor}</p>
+          <p class="card-note">${shortText(product.buyer || product.description)}</p>
           <div class="tag-row">${tagList(product.notes)}</div>
           <div class="price-row">
             <strong>${formatPrice(product.price)}</strong>
             <span>${product.volume}</span>
           </div>
           <div class="card-actions">
-            <button class="button button-secondary" type="button" data-favorite="${product.id}">
+            <button class="button button-secondary" type="button" data-favorite="${product.id}" aria-pressed="${favorite}">
               ${favorite ? "\u5DF2\u6536\u85CF" : "\u6536\u85CF"}
             </button>
             <button class="button button-primary" type="button" data-add-cart="${product.id}">\u52A0\u5165\u8D2D\u7269\u8F66</button>
@@ -545,6 +564,7 @@
         toggle.addEventListener("click", () => {
           const open = header.classList.toggle("nav-open");
           toggle.setAttribute("aria-expanded", String(open));
+          toggle.setAttribute("aria-label", open ? "\u5173\u95ED\u4E3B\u5BFC\u822A" : "\u6253\u5F00\u4E3B\u5BFC\u822A");
         });
       }
       if (nav) {
@@ -553,6 +573,7 @@
           link.addEventListener("click", () => {
             header == null ? void 0 : header.classList.remove("nav-open");
             toggle == null ? void 0 : toggle.setAttribute("aria-expanded", "false");
+            toggle == null ? void 0 : toggle.setAttribute("aria-label", "\u6253\u5F00\u4E3B\u5BFC\u822A");
           });
         });
       }
@@ -649,7 +670,16 @@
           return [product.brand, product.name, product.family, product.country, product.description, ...product.notes, ...product.status].join(" ").toLowerCase().includes(q);
         });
         if (result) result.textContent = `${filtered.length} \u4EF6\u4F5C\u54C1`;
-        grid.innerHTML = filtered.length ? filtered.map((product) => productCard(product)).join("") : `<div class="empty-state">\u5F53\u524D\u7B5B\u9009\u6CA1\u6709\u5339\u914D\u4F5C\u54C1\u3002\u53EF\u4EE5\u6E05\u9664\u7B5B\u9009\uFF0C\u6216\u5148\u4ECE\u8BD5\u9999\u5957\u88C5\u5F00\u59CB\u3002</div>`;
+        grid.innerHTML = filtered.length ? filtered.map((product) => productCard(product)).join("") : `
+          <div class="empty-state">
+            <h2>\u5F53\u524D\u7B5B\u9009\u6CA1\u6709\u5339\u914D\u4F5C\u54C1</h2>
+            <p>\u53EF\u4EE5\u6E05\u9664\u7B5B\u9009\uFF0C\u6216\u5148\u4ECE\u8BD5\u9999\u5957\u88C5\u5F00\u59CB\uFF0C\u964D\u4F4E\u7B2C\u4E00\u6B21\u9009\u62E9\u7684\u98CE\u9669\u3002</p>
+            <div class="button-row">
+              <button class="button button-secondary" type="reset" form="${(form == null ? void 0 : form.id) || ""}">\u6E05\u9664\u7B5B\u9009</button>
+              <a class="button button-primary" href="samples.html">\u67E5\u770B\u8BD5\u9999\u5957\u88C5</a>
+            </div>
+          </div>
+        `;
       }
       render();
     }, renderProductPage = function() {
@@ -678,6 +708,16 @@
           <h1>${product.name}</h1>
           <p>${product.description}</p>
           <div class="tag-row">${tagList(product.notes)}</div>
+          <div class="purchase-guidance" aria-label="\u8D2D\u4E70\u524D\u5224\u65AD">
+            <div>
+              <span>\u9002\u5408\u573A\u666F</span>
+              <strong>${product.bestFor}</strong>
+            </div>
+            <div>
+              <span>\u76F2\u4E70\u63D0\u9192</span>
+              <p>${product.caution}</p>
+            </div>
+          </div>
           <div class="purchase-box">
             <div><span>\u4EF7\u683C</span><strong>${formatPrice(product.price)}</strong></div>
             <div><span>\u5BB9\u91CF</span><strong>${product.volume}</strong></div>
@@ -686,7 +726,8 @@
           </div>
           <div class="purchase-actions">
             <button class="button button-primary" type="button" data-add-cart="${product.id}">\u52A0\u5165\u8D2D\u7269\u8F66</button>
-            <button class="button button-secondary" type="button" data-favorite="${product.id}">${state.favorites.has(product.id) ? "\u5DF2\u6536\u85CF" : "\u6536\u85CF"}</button>
+            <a class="button button-secondary" href="samples.html">\u4E0D\u786E\u5B9A\uFF0C\u5148\u8BD5\u9999</a>
+            <button class="button button-secondary" type="button" data-favorite="${product.id}" aria-pressed="${state.favorites.has(product.id)}">${state.favorites.has(product.id) ? "\u5DF2\u6536\u85CF" : "\u6536\u85CF"}</button>
           </div>
         </div>
       </section>
@@ -707,6 +748,10 @@
           <p>${product.buyer}</p>
           <p><strong>\u9002\u5408\uFF1A</strong>${product.bestFor}</p>
           <p><strong>\u63D0\u9192\uFF1A</strong>${product.caution}</p>
+          <div class="detail-cta">
+            <span class="status-badge">Sample first</span>
+            <a class="text-link" href="samples.html">\u62C5\u5FC3\u76F2\u4E70\uFF1F\u5148\u4ECE\u8BD5\u9999\u5957\u88C5\u5F00\u59CB</a>
+          </div>
         </article>
         <article>
           <h2>\u89C4\u683C\u4E0E\u670D\u52A1</h2>
@@ -853,15 +898,22 @@
         loginForm.addEventListener("submit", async (event) => {
           event.preventDefault();
           const formData = new FormData(loginForm);
+          const submitButton = loginForm.querySelector("button[type='submit']");
+          setFormMessage(loginForm, "\u6B63\u5728\u767B\u5F55...");
+          if (submitButton) submitButton.disabled = true;
           try {
             await loginMember({
               account: formData.get("account"),
               password: formData.get("password")
             });
+            setFormMessage(loginForm, "\u767B\u5F55\u6210\u529F\uFF0C\u6B63\u5728\u8FDB\u5165\u4F1A\u5458\u4E2D\u5FC3\u3002", "success");
             showToast("\u767B\u5F55\u6210\u529F\u3002");
             window.location.href = "account.html";
           } catch (error) {
+            setFormMessage(loginForm, error.message, "error");
             showToast(error.message);
+          } finally {
+            if (submitButton) submitButton.disabled = false;
           }
         });
       }
@@ -870,6 +922,9 @@
         registerForm.addEventListener("submit", async (event) => {
           event.preventDefault();
           const formData = new FormData(registerForm);
+          const submitButton = registerForm.querySelector("button[type='submit']");
+          setFormMessage(registerForm, "\u6B63\u5728\u521B\u5EFA\u4F1A\u5458\u8D26\u53F7...");
+          if (submitButton) submitButton.disabled = true;
           try {
             await registerMember({
               name: formData.get("name"),
@@ -877,10 +932,14 @@
               phone: formData.get("phone"),
               password: formData.get("password")
             });
+            setFormMessage(registerForm, "\u6CE8\u518C\u6210\u529F\uFF0C\u6B63\u5728\u8FDB\u5165\u4F1A\u5458\u4E2D\u5FC3\u3002", "success");
             showToast("\u6CE8\u518C\u6210\u529F\u3002");
             window.location.href = "account.html";
           } catch (error) {
+            setFormMessage(registerForm, error.message, "error");
             showToast(error.message);
+          } finally {
+            if (submitButton) submitButton.disabled = false;
           }
         });
       }
@@ -976,6 +1035,7 @@
       writeStore("sa_favorites", Array.from(state.favorites));
       $all2(`[data-favorite="${CSS.escape(id)}"]`).forEach((button) => {
         button.textContent = state.favorites.has(id) ? "\u5DF2\u6536\u85CF" : "\u6536\u85CF";
+        button.setAttribute("aria-pressed", String(state.favorites.has(id)));
       });
     }, showToast = function(message) {
       let toast = $2(".toast");
@@ -1307,7 +1367,7 @@
                 <p>${item.note || ""}${item.expiresAt ? ` \xB7 \u6709\u6548\u81F3 ${new Date(item.expiresAt).toLocaleDateString("zh-CN")}` : ""}</p>
               </div>
               <strong>${item.points > 0 ? "+" : ""}${item.points}</strong>
-              <span>${new Date(item.createdAt).toLocaleString("zh-CN")}</span>
+              <span class="status-badge">${new Date(item.createdAt).toLocaleDateString("zh-CN")}</span>
             </article>
           `).join("") : `<div class="empty-state">\u6682\u65E0\u79EF\u5206\u6D41\u6C34\u3002</div>`}
         </div>
@@ -1432,7 +1492,7 @@
                 <p>${order.trackingNo ? `\u7269\u6D41\u5355\u53F7\uFF1A${order.trackingNo}` : "\u7B49\u5F85\u540E\u53F0\u5904\u7406"}</p>
               </div>
               <strong>${order.totalPoints} \u79EF\u5206</strong>
-              <span>${redemptionStatusLabel(order.status)}</span>
+              <span class="status-badge">${redemptionStatusLabel(order.status)}</span>
             </article>
           `).join("") : `<div class="empty-state">\u6682\u65E0\u5151\u6362\u8BB0\u5F55\u3002</div>`}
         </div>
@@ -1457,7 +1517,7 @@
                 <p>\u4F1A\u5458\u6298\u6263\uFF1A${moneyText(order.memberDiscountAmountYuan)} \xB7 ${orderPointsText(order)}</p>
               </div>
               <strong>${moneyText(order.paidAmountYuan)}</strong>
-              <span>${orderStatusLabel(order.status)}</span>
+              <span class="status-badge">${orderStatusLabel(order.status)}</span>
               ${order.status === "pending_payment" ? `<button class="button button-secondary" type="button" data-admin-pay="${order.id}">\u5F00\u53D1\u786E\u8BA4\u652F\u4ED8</button>` : ""}
               ${["paid", "shipped"].includes(order.status) ? `<button class="button button-secondary" type="button" data-confirm-receipt="${order.id}">\u786E\u8BA4\u6536\u8D27</button>` : ""}
             </article>
