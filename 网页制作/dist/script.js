@@ -41,6 +41,7 @@
   var member_client_exports = {};
   __export(member_client_exports, {
     adminPayOrder: () => adminPayOrder,
+    confirmReceiptOrder: () => confirmReceiptOrder,
     getMemberOrders: () => getMemberOrders,
     getMemberProfile: () => getMemberProfile,
     getPointTransactions: () => getPointTransactions,
@@ -64,6 +65,11 @@
   }
   function getTierProgress() {
     return apiFetch("/api/member/tier-progress");
+  }
+  function confirmReceiptOrder(orderId) {
+    return apiFetch(`/api/member/orders/${encodeURIComponent(orderId)}/confirm-receipt`, {
+      method: "POST"
+    });
   }
   function adminPayOrder(orderId, key) {
     return apiFetch(`/api/admin/orders/${encodeURIComponent(orderId)}/pay`, {
@@ -296,7 +302,7 @@
     </div>
     <div class="member-quote" data-member-quote>\u767B\u5F55\u540E\u53EF\u67E5\u770B\u4F1A\u5458\u6298\u6263\u548C\u9884\u8BA1\u79EF\u5206\u3002</div>
     <button class="button button-primary full" type="button" data-checkout>\u63D0\u4EA4\u8BA2\u5355</button>
-    ${compact ? `<a class="text-link" href="cart.html">\u67E5\u770B\u5B8C\u6574\u8D2D\u7269\u8F66</a>` : `<p class="service-note">\u8BA2\u5355\u63D0\u4EA4\u540E\u7531\u540E\u53F0\u786E\u8BA4\u652F\u4ED8\uFF0C\u652F\u4ED8\u786E\u8BA4\u540E\u81EA\u52A8\u53D1\u653E\u79EF\u5206\u548C\u66F4\u65B0\u7B49\u7EA7\u3002</p>`}
+    ${compact ? `<a class="text-link" href="cart.html">\u67E5\u770B\u5B8C\u6574\u8D2D\u7269\u8F66</a>` : `<p class="service-note">\u8BA2\u5355\u63D0\u4EA4\u540E\u7531\u540E\u53F0\u786E\u8BA4\u652F\u4ED8\uFF0C\u5BA2\u6237\u786E\u8BA4\u6536\u8D27\u540E\u81EA\u52A8\u53D1\u653E\u79EF\u5206\u548C\u66F4\u65B0\u7B49\u7EA7\u3002</p>`}
   `;
   }
   function renderCartShell() {
@@ -407,6 +413,40 @@
 
   // src/assets/js/app.js
   init_member_client();
+
+  // src/assets/js/points-mall-client.js
+  init_api_client();
+  function getPointsMallItems() {
+    return apiFetch("/api/points-mall/items");
+  }
+  function getPointsMallItem(id) {
+    return apiFetch(`/api/points-mall/items/${encodeURIComponent(id)}`);
+  }
+  function redeemPointsMallItem(payload) {
+    return apiFetch("/api/points-mall/redeem", {
+      method: "POST",
+      body: payload
+    });
+  }
+  function getPointsRedemptions() {
+    return apiFetch("/api/points-mall/redemptions");
+  }
+  function adminGetPointsMallItems(key) {
+    return apiFetch("/api/admin/points-mall/items", {
+      headers: {
+        "x-admin-key": key
+      }
+    });
+  }
+  function adminGetPointsRedemptions(key) {
+    return apiFetch("/api/admin/points-mall/redemptions", {
+      headers: {
+        "x-admin-key": key
+      }
+    });
+  }
+
+  // src/assets/js/app.js
   if (hasCatalogData) {
     let readStore = function(key, fallback) {
       try {
@@ -794,6 +834,8 @@
         <a class="text-link" href="account.html">\u4F1A\u5458\u4E2D\u5FC3</a>
         <a class="text-link" href="orders.html">\u8BA2\u5355\u8BB0\u5F55</a>
         <a class="text-link" href="points.html">\u79EF\u5206\u660E\u7EC6</a>
+        <a class="text-link" href="points-mall.html">\u79EF\u5206\u5546\u57CE</a>
+        <a class="text-link" href="points-redemptions.html">\u5151\u6362\u8BB0\u5F55</a>
         <a class="text-link" href="membership.html">\u4F1A\u5458\u89C4\u5219</a>
       </nav>
     `;
@@ -847,6 +889,9 @@
         earn_order: "\u8BA2\u5355\u79EF\u5206",
         use_order: "\u8BA2\u5355\u62B5\u6263",
         refund_reversal: "\u9000\u6B3E\u6263\u56DE",
+        expire_points: "\u79EF\u5206\u8FC7\u671F",
+        redeem_points: "\u79EF\u5206\u5151\u6362",
+        redeem_refund: "\u5151\u6362\u8FD4\u8FD8",
         admin_adjust: "\u4EBA\u5DE5\u8C03\u6574"
       }[type] || type;
     }, orderStatusLabel = function(status) {
@@ -855,10 +900,30 @@
         paid: "\u5DF2\u652F\u4ED8",
         processing: "\u5904\u7406\u4E2D",
         shipped: "\u5DF2\u53D1\u8D27",
-        completed: "\u5DF2\u5B8C\u6210",
+        completed: "\u5DF2\u786E\u8BA4\u6536\u8D27",
         cancelled: "\u5DF2\u53D6\u6D88",
         refunded: "\u5DF2\u9000\u6B3E"
       }[status] || status;
+    }, redemptionStatusLabel = function(status) {
+      return {
+        pending_fulfillment: "\u5F85\u5904\u7406",
+        processing: "\u5904\u7406\u4E2D",
+        shipped: "\u5DF2\u53D1\u8D27",
+        completed: "\u5DF2\u5B8C\u6210",
+        cancelled: "\u5DF2\u53D6\u6D88"
+      }[status] || status;
+    }, mallItemStatusLabel = function(status) {
+      return {
+        draft: "\u8349\u7A3F",
+        active: "\u5DF2\u4E0A\u67B6",
+        inactive: "\u5DF2\u4E0B\u67B6",
+        sold_out: "\u5DF2\u5151\u5B8C"
+      }[status] || status;
+    }, orderPointsText = function(order) {
+      if (order.pointsAwarded) return `\u5DF2\u53D1\u653E\u79EF\u5206\uFF1A${order.pointsAwarded}`;
+      if (["paid", "processing", "shipped"].includes(order.status)) return "\u786E\u8BA4\u6536\u8D27\u540E\u53D1\u653E\u79EF\u5206";
+      if (order.status === "refunded") return "\u5DF2\u9000\u6B3E\uFF0C\u4E0D\u53D1\u653E\u79EF\u5206";
+      return "\u5F85\u652F\u4ED8\u786E\u8BA4";
     }, adminActionLabel = function(action) {
       return {
         adjust_member_tier: "\u8C03\u6574\u4F1A\u5458\u7B49\u7EA7",
@@ -866,8 +931,15 @@
         update_order_status: "\u4FEE\u6539\u8BA2\u5355\u72B6\u6001",
         confirm_order_paid: "\u786E\u8BA4\u652F\u4ED8",
         refund_order: "\u9000\u6B3E",
+        confirm_order_received: "\u786E\u8BA4\u6536\u8D27",
         create_member_tier: "\u65B0\u589E\u4F1A\u5458\u7B49\u7EA7",
-        update_member_tier: "\u66F4\u65B0\u4F1A\u5458\u7B49\u7EA7"
+        update_member_tier: "\u66F4\u65B0\u4F1A\u5458\u7B49\u7EA7",
+        create_points_mall_item: "\u65B0\u589E\u79EF\u5206\u5546\u54C1",
+        update_points_mall_item: "\u66F4\u65B0\u79EF\u5206\u5546\u54C1",
+        activate_points_mall_item: "\u4E0A\u67B6\u79EF\u5206\u5546\u54C1",
+        deactivate_points_mall_item: "\u4E0B\u67B6\u79EF\u5206\u5546\u54C1",
+        update_points_redemption_status: "\u66F4\u65B0\u5151\u6362\u8BA2\u5355",
+        cancel_points_redemption: "\u53D6\u6D88\u5151\u6362\u8BA2\u5355"
       }[action] || action;
     }, addToCart = function(id) {
       try {
@@ -929,7 +1001,13 @@
         const logout = event.target.closest("[data-logout]");
         const adminPay = event.target.closest("[data-admin-pay]");
         const adminRefund = event.target.closest("[data-admin-refund]");
+        const adminComplete = event.target.closest("[data-admin-complete]");
+        const confirmReceipt = event.target.closest("[data-confirm-receipt]");
         const adminExport = event.target.closest("[data-admin-export]");
+        const adminMallActivate = event.target.closest("[data-admin-mall-activate]");
+        const adminMallDeactivate = event.target.closest("[data-admin-mall-deactivate]");
+        const adminRedemptionStatus = event.target.closest("[data-admin-redemption-status]");
+        const adminRedemptionCancel = event.target.closest("[data-admin-redemption-cancel]");
         if (add) addToCart(add.dataset.addCart);
         if (fav) toggleFavorite(fav.dataset.favorite);
         if (open) openCart();
@@ -971,7 +1049,37 @@
           try {
             await adminPayOrder(adminPay.dataset.adminPay, key);
             resetSessionCache();
-            showToast("\u8BA2\u5355\u5DF2\u786E\u8BA4\u652F\u4ED8\uFF0C\u79EF\u5206\u548C\u7B49\u7EA7\u5DF2\u66F4\u65B0\u3002");
+            showToast("\u8BA2\u5355\u5DF2\u786E\u8BA4\u652F\u4ED8\uFF0C\u7B49\u5F85\u5BA2\u6237\u786E\u8BA4\u6536\u8D27\u540E\u7ED3\u7B97\u79EF\u5206\u548C\u7B49\u7EA7\u3002");
+            await renderOrdersPage();
+            await initAuthHeader();
+          } catch (error) {
+            showToast(error.message);
+          }
+        }
+        if (confirmReceipt) {
+          try {
+            await confirmReceiptOrder(confirmReceipt.dataset.confirmReceipt);
+            resetSessionCache();
+            showToast("\u5DF2\u786E\u8BA4\u6536\u8D27\uFF0C\u79EF\u5206\u548C\u7B49\u7EA7\u5DF2\u7ED3\u7B97\u3002");
+            await renderOrdersPage();
+            await initAuthHeader();
+          } catch (error) {
+            showToast(error.message);
+          }
+        }
+        if (adminComplete) {
+          const key = window.prompt("\u8F93\u5165\u540E\u53F0\u786E\u8BA4\u6536\u8D27\u5BC6\u94A5", window.localStorage.getItem("sa_admin_key") || "dev-admin");
+          if (!key) return;
+          try {
+            await apiFetch(`/api/admin/orders/${encodeURIComponent(adminComplete.dataset.adminComplete)}/complete`, {
+              method: "POST",
+              headers: {
+                "x-admin-key": key
+              }
+            });
+            resetSessionCache();
+            showToast("\u8BA2\u5355\u5DF2\u786E\u8BA4\u6536\u8D27\uFF0C\u79EF\u5206\u548C\u7B49\u7EA7\u5DF2\u7ED3\u7B97\u3002");
+            await renderAdminPage();
             await renderOrdersPage();
             await initAuthHeader();
           } catch (error) {
@@ -993,6 +1101,65 @@
             await renderAdminPage();
             await renderOrdersPage();
             await initAuthHeader();
+          } catch (error) {
+            showToast(error.message);
+          }
+        }
+        if (adminMallActivate || adminMallDeactivate) {
+          const key = window.localStorage.getItem("sa_admin_key") || window.prompt("\u8F93\u5165\u540E\u53F0\u5BC6\u94A5", "dev-admin");
+          if (!key) return;
+          const node = adminMallActivate || adminMallDeactivate;
+          const action = adminMallActivate ? "activate" : "deactivate";
+          try {
+            await apiFetch(`/api/admin/points-mall/items/${encodeURIComponent(node.dataset.adminMallActivate || node.dataset.adminMallDeactivate)}/${action}`, {
+              method: "POST",
+              headers: {
+                "x-admin-key": key
+              }
+            });
+            showToast(action === "activate" ? "\u79EF\u5206\u5546\u54C1\u5DF2\u4E0A\u67B6\u3002" : "\u79EF\u5206\u5546\u54C1\u5DF2\u4E0B\u67B6\u3002");
+            await renderAdminPage();
+          } catch (error) {
+            showToast(error.message);
+          }
+        }
+        if (adminRedemptionStatus) {
+          const key = window.localStorage.getItem("sa_admin_key") || window.prompt("\u8F93\u5165\u540E\u53F0\u5BC6\u94A5", "dev-admin");
+          if (!key) return;
+          const trackingNo = adminRedemptionStatus.dataset.status === "shipped" ? window.prompt("\u7269\u6D41\u5355\u53F7\uFF0C\u53EF\u7559\u7A7A", "") : "";
+          try {
+            await apiFetch(`/api/admin/points-mall/redemptions/${encodeURIComponent(adminRedemptionStatus.dataset.adminRedemptionStatus)}/status`, {
+              method: "PATCH",
+              headers: {
+                "x-admin-key": key
+              },
+              body: {
+                status: adminRedemptionStatus.dataset.status,
+                trackingNo
+              }
+            });
+            showToast("\u5151\u6362\u8BA2\u5355\u72B6\u6001\u5DF2\u66F4\u65B0\u3002");
+            await renderAdminPage();
+          } catch (error) {
+            showToast(error.message);
+          }
+        }
+        if (adminRedemptionCancel) {
+          const key = window.localStorage.getItem("sa_admin_key") || window.prompt("\u8F93\u5165\u540E\u53F0\u5BC6\u94A5", "dev-admin");
+          if (!key) return;
+          try {
+            await apiFetch(`/api/admin/points-mall/redemptions/${encodeURIComponent(adminRedemptionCancel.dataset.adminRedemptionCancel)}/cancel`, {
+              method: "POST",
+              headers: {
+                "x-admin-key": key
+              },
+              body: {
+                reason: "\u540E\u53F0\u53D6\u6D88\u5151\u6362"
+              }
+            });
+            resetSessionCache();
+            showToast("\u5151\u6362\u8BA2\u5355\u5DF2\u53D6\u6D88\uFF0C\u79EF\u5206\u548C\u5E93\u5B58\u5DF2\u8FD4\u8FD8\u3002");
+            await renderAdminPage();
           } catch (error) {
             showToast(error.message);
           }
@@ -1050,6 +1217,9 @@
     renderPointsPage();
     renderOrdersPage();
     renderMembershipPage();
+    renderPointsMallPage();
+    renderPointsMallItemPage();
+    renderPointsRedemptionsPage();
     renderAdminPage();
     async function initAuthHeader() {
       const mount = $2("[data-auth-actions]");
@@ -1079,7 +1249,7 @@
           <article>
             <span class="eyebrow">Current tier</span>
             <h2>${data.tier.name}</h2>
-            <p>\u5F53\u524D\u6298\u6263\uFF1A${discountLabel(data.tier.discountRate)} \xB7 \u79EF\u5206\uFF1A\u5B9E\u4ED8 \xA51 = 1 \u79EF\u5206</p>
+            <p>\u5F53\u524D\u6298\u6263\uFF1A${discountLabel(data.tier.discountRate)} \xB7 \u79EF\u5206\u500D\u6570\uFF1A${data.tier.pointMultiplier || 1}x</p>
           </article>
           <article>
             <span class="eyebrow">Points</span>
@@ -1134,12 +1304,137 @@
             <article>
               <div>
                 <h3>${pointTypeLabel(item.type)}</h3>
-                <p>${item.note || ""}</p>
+                <p>${item.note || ""}${item.expiresAt ? ` \xB7 \u6709\u6548\u81F3 ${new Date(item.expiresAt).toLocaleDateString("zh-CN")}` : ""}</p>
               </div>
               <strong>${item.points > 0 ? "+" : ""}${item.points}</strong>
               <span>${new Date(item.createdAt).toLocaleString("zh-CN")}</span>
             </article>
           `).join("") : `<div class="empty-state">\u6682\u65E0\u79EF\u5206\u6D41\u6C34\u3002</div>`}
+        </div>
+      `;
+      } catch (e) {
+        mount.innerHTML = requireLoginMarkup();
+      }
+    }
+    async function renderPointsMallPage() {
+      const mount = $2("[data-points-mall-page]");
+      if (!mount) return;
+      try {
+        const [profile, mall] = await Promise.all([getMemberProfile(), getPointsMallItems()]);
+        mount.innerHTML = `
+        ${memberNav()}
+        <div class="member-summary">
+          <strong>${profile.profile.availablePoints}</strong>
+          <span>\u53EF\u7528\u79EF\u5206</span>
+        </div>
+        <div class="mall-grid">
+          ${mall.items.length ? mall.items.map((item) => `
+            <article class="mall-card">
+              <a class="mall-image" href="points-item.html?id=${encodeURIComponent(item.id)}" style="background-image:url('${item.image}')"></a>
+              <div>
+                <p class="eyebrow">${item.stockQuantity > 0 ? `\u5E93\u5B58 ${item.stockQuantity}` : "\u5DF2\u5151\u5B8C"}</p>
+                <h2>${item.name}</h2>
+                <p>${item.description || ""}</p>
+              </div>
+              <div class="mall-card-footer">
+                <strong>${item.pointsPrice} \u79EF\u5206</strong>
+                <a class="button button-secondary" href="points-item.html?id=${encodeURIComponent(item.id)}">\u67E5\u770B\u5151\u6362</a>
+              </div>
+            </article>
+          `).join("") : `<div class="empty-state">\u6682\u65E0\u53EF\u5151\u6362\u5546\u54C1\u3002</div>`}
+        </div>
+      `;
+      } catch (e) {
+        mount.innerHTML = requireLoginMarkup();
+      }
+    }
+    async function renderPointsMallItemPage() {
+      var _a;
+      const mount = $2("[data-points-item-page]");
+      if (!mount) return;
+      const id = params().get("id");
+      if (!id) {
+        mount.innerHTML = `<div class="empty-state">\u79EF\u5206\u5546\u54C1\u4E0D\u5B58\u5728\u3002</div>`;
+        return;
+      }
+      try {
+        const [profile, payload] = await Promise.all([getMemberProfile(), getPointsMallItem(id)]);
+        const item = payload.item;
+        mount.innerHTML = `
+        ${memberNav()}
+        <div class="mall-detail">
+          <div class="mall-detail-image" style="background-image:url('${item.image}')"></div>
+          <div class="mall-detail-panel">
+            <p class="eyebrow">${item.stockQuantity > 0 ? `\u5E93\u5B58 ${item.stockQuantity}` : "\u5DF2\u5151\u5B8C"}</p>
+            <h2>${item.name}</h2>
+            <p>${item.description || ""}</p>
+            <div class="member-summary compact-summary">
+              <strong>${item.pointsPrice}</strong>
+              <span>\u5151\u6362\u79EF\u5206 \xB7 \u4F60\u6709 ${profile.profile.availablePoints} \u79EF\u5206</span>
+            </div>
+            <form class="account-form compact-account-form" data-redeem-form>
+              <label class="field-label">\u5151\u6362\u6570\u91CF<input name="quantity" type="number" min="1" max="${item.stockQuantity}" value="1" required></label>
+              <label class="field-label">\u6536\u4EF6\u4EBA<input name="recipientName" value="${profile.user.name || ""}"></label>
+              <label class="field-label">\u8054\u7CFB\u7535\u8BDD<input name="recipientPhone" value="${profile.user.phone || ""}"></label>
+              <label class="field-label">\u6536\u8D27\u5730\u5740<input name="shippingAddress"></label>
+              <button class="button button-primary" type="submit" ${profile.profile.availablePoints < item.pointsPrice || item.stockQuantity <= 0 ? "disabled" : ""}>\u786E\u8BA4\u5151\u6362</button>
+            </form>
+          </div>
+        </div>
+      `;
+        (_a = $2("[data-redeem-form]", mount)) == null ? void 0 : _a.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const form = event.currentTarget;
+          if (form.dataset.submitting === "true") return;
+          form.dataset.submitting = "true";
+          const submitButton = form.querySelector("button[type='submit']");
+          if (submitButton) submitButton.disabled = true;
+          const formData = new FormData(form);
+          const requestId = form.dataset.requestId || `${item.id}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+          form.dataset.requestId = requestId;
+          try {
+            const result = await redeemPointsMallItem({
+              mallItemId: item.id,
+              quantity: Number(formData.get("quantity")),
+              recipientName: formData.get("recipientName"),
+              recipientPhone: formData.get("recipientPhone"),
+              shippingAddress: formData.get("shippingAddress"),
+              requestId
+            });
+            resetSessionCache();
+            showToast(`\u5151\u6362\u6210\u529F\uFF0C\u8BA2\u5355 ${result.order.orderNo}`);
+            setTimeout(() => {
+              window.location.href = "points-redemptions.html";
+            }, 700);
+          } catch (error) {
+            form.dataset.submitting = "false";
+            if (submitButton) submitButton.disabled = false;
+            showToast(error.message);
+          }
+        });
+      } catch (e) {
+        mount.innerHTML = requireLoginMarkup();
+      }
+    }
+    async function renderPointsRedemptionsPage() {
+      const mount = $2("[data-points-redemptions-page]");
+      if (!mount) return;
+      try {
+        const { redemptions } = await getPointsRedemptions();
+        mount.innerHTML = `
+        ${memberNav()}
+        <div class="member-table">
+          ${redemptions.length ? redemptions.map((order) => `
+            <article>
+              <div>
+                <h3>${order.orderNo}</h3>
+                <p>${order.items.map((item) => `${item.name} x ${item.quantity}`).join("\u3001")}</p>
+                <p>${order.trackingNo ? `\u7269\u6D41\u5355\u53F7\uFF1A${order.trackingNo}` : "\u7B49\u5F85\u540E\u53F0\u5904\u7406"}</p>
+              </div>
+              <strong>${order.totalPoints} \u79EF\u5206</strong>
+              <span>${redemptionStatusLabel(order.status)}</span>
+            </article>
+          `).join("") : `<div class="empty-state">\u6682\u65E0\u5151\u6362\u8BB0\u5F55\u3002</div>`}
         </div>
       `;
       } catch (e) {
@@ -1159,11 +1454,12 @@
               <div>
                 <h3>${order.orderNo}</h3>
                 <p>${order.items.map((item) => `${item.productName} x ${item.quantity}`).join("\u3001")}</p>
-                <p>\u4F1A\u5458\u6298\u6263\uFF1A${moneyText(order.memberDiscountAmountYuan)} \xB7 \u9884\u8BA1/\u83B7\u5F97\u79EF\u5206\uFF1A${order.pointsAwarded || "\u5F85\u652F\u4ED8\u786E\u8BA4"}</p>
+                <p>\u4F1A\u5458\u6298\u6263\uFF1A${moneyText(order.memberDiscountAmountYuan)} \xB7 ${orderPointsText(order)}</p>
               </div>
               <strong>${moneyText(order.paidAmountYuan)}</strong>
               <span>${orderStatusLabel(order.status)}</span>
               ${order.status === "pending_payment" ? `<button class="button button-secondary" type="button" data-admin-pay="${order.id}">\u5F00\u53D1\u786E\u8BA4\u652F\u4ED8</button>` : ""}
+              ${["paid", "shipped"].includes(order.status) ? `<button class="button button-secondary" type="button" data-confirm-receipt="${order.id}">\u786E\u8BA4\u6536\u8D27</button>` : ""}
             </article>
           `).join("") : `<div class="empty-state">\u6682\u65E0\u8BA2\u5355\u3002</div>`}
         </div>
@@ -1182,27 +1478,30 @@
         current = null;
       }
       const tiers = [
-        ["\u666E\u901A\u4F1A\u5458", "\xA50", "\u65E0", "\u6EE1 \xA5599 \u5305\u90AE"],
-        ["\u94F6\u5361\u4F1A\u5458", "\xA53,000", "98 \u6298", "\u6EE1 \xA5499 \u5305\u90AE"],
-        ["\u91D1\u5361\u4F1A\u5458", "\xA58,000", "95 \u6298", "\u6EE1 \xA5399 \u5305\u90AE"],
-        ["\u9ED1\u5361\u4F1A\u5458", "\xA520,000", "92 \u6298", "\u987A\u4E30\u5305\u90AE"]
+        ["\u666E\u901A\u4F1A\u5458", "\xA50", "\u65E0", "1.0x", "\u6EE1 \xA5599 \u5305\u90AE"],
+        ["\u94F6\u5361\u4F1A\u5458", "\xA51,000", "95 \u6298", "1.1x", "\u6EE1 \xA5499 \u5305\u90AE"],
+        ["\u91D1\u5361\u4F1A\u5458", "\xA510,000", "92 \u6298", "1.2x", "\u6EE1 \xA5399 \u5305\u90AE"],
+        ["\u94BB\u5361\u4F1A\u5458", "\xA520,000", "88 \u6298", "1.5x", "\u987A\u4E30\u5305\u90AE"],
+        ["\u9ED1\u5361\u4F1A\u5458", "\xA550,000", "85 \u6298", "2.0x", "\u987A\u4E30\u5305\u90AE"],
+        ["\u81F3\u5C0A\u4F1A\u5458", "\xA5200,000", "8 \u6298", "2.0x", "\u987A\u4E30\u5305\u90AE"]
       ];
       mount.innerHTML = `
       ${memberNav()}
       ${current ? `<div class="member-summary"><strong>${current.tier.name}</strong><span>${current.nextTier ? `\u8DDD\u79BB ${current.nextTier.name} \u8FD8\u5DEE ${moneyText(current.amountToNextTierYuan)}` : "\u5DF2\u8FBE\u5230\u6700\u9AD8\u7B49\u7EA7"}</span></div>` : ""}
       <div class="tier-table">
-        <div><strong>\u7B49\u7EA7</strong><strong>\u7D2F\u8BA1\u6D88\u8D39</strong><strong>\u6298\u6263</strong><strong>\u514D\u8FD0</strong></div>
+        <div><strong>\u7B49\u7EA7</strong><strong>\u7D2F\u8BA1\u6D88\u8D39</strong><strong>\u6298\u6263</strong><strong>\u79EF\u5206\u500D\u6570</strong><strong>\u514D\u8FD0</strong></div>
         ${tiers.map((tier) => `<div>${tier.map((cell) => `<span>${cell}</span>`).join("")}</div>`).join("")}
       </div>
       <div class="policy-list member-policy-list">
-        <article><h2>\u79EF\u5206\u8BA1\u7B97</h2><p>\u6BCF\u5B9E\u9645\u652F\u4ED8 \xA51 \u83B7\u5F97 1 \u79EF\u5206\u3002\u8FD0\u8D39\u3001\u53D6\u6D88\u8BA2\u5355\u548C\u9000\u6B3E\u91D1\u989D\u4E0D\u8BA1\u5165\u79EF\u5206\u3002</p></article>
-        <article><h2>\u5347\u7EA7\u89C4\u5219</h2><p>\u8BA2\u5355\u7531\u540E\u53F0\u786E\u8BA4\u652F\u4ED8\u540E\uFF0C\u7CFB\u7EDF\u81EA\u52A8\u7D2F\u52A0\u6709\u6548\u6D88\u8D39\u5E76\u5339\u914D\u6700\u9AD8\u53EF\u8FBE\u7B49\u7EA7\u3002\u7B2C\u4E00\u7248\u4F1A\u5458\u7B49\u7EA7\u6C38\u4E45\u4FDD\u7559\uFF0C\u4E0D\u505A\u81EA\u52A8\u964D\u7EA7\u3002</p></article>
+        <article><h2>\u79EF\u5206\u8BA1\u7B97</h2><p>\u79EF\u5206\u6309\u5B9E\u4ED8\u5546\u54C1\u91D1\u989D\u548C\u5F53\u524D\u7B49\u7EA7\u500D\u6570\u8BA1\u7B97\u3002\u8FD0\u8D39\u3001\u53D6\u6D88\u8BA2\u5355\u548C\u9000\u6B3E\u91D1\u989D\u4E0D\u8BA1\u5165\u79EF\u5206\u3002</p></article>
+        <article><h2>\u5347\u7EA7\u89C4\u5219</h2><p>\u8BA2\u5355\u7531\u540E\u53F0\u786E\u8BA4\u652F\u4ED8\u540E\u4E0D\u4F1A\u7ACB\u523B\u5347\u7EA7\u3002\u5BA2\u6237\u786E\u8BA4\u6536\u8D27\u540E\uFF0C\u7CFB\u7EDF\u624D\u4F1A\u7D2F\u52A0\u6709\u6548\u6D88\u8D39\u5E76\u5339\u914D\u6700\u9AD8\u53EF\u8FBE\u7B49\u7EA7\uFF1B\u9000\u6B3E\u540E\u91CD\u65B0\u6309\u7D2F\u8BA1\u6709\u6548\u6D88\u8D39\u8BA1\u7B97\u7B49\u7EA7\u3002</p></article>
+        <article><h2>\u79EF\u5206\u6709\u6548\u671F</h2><p>\u8BA2\u5355\u79EF\u5206\u81EA\u786E\u8BA4\u6536\u8D27\u65E5\u8D77\u4E00\u5E74\u6709\u6548\uFF0C\u672A\u6765\u79EF\u5206\u5546\u57CE\u5151\u6362\u4F1A\u6309 FIFO \u5148\u6D88\u8017\u6700\u65E9\u83B7\u5F97\u7684\u79EF\u5206\u3002\u79EF\u5206\u6682\u4E0D\u62B5\u73B0\u91D1\u3002</p></article>
         <article><h2>\u6298\u6263\u89C4\u5219</h2><p>\u4F1A\u5458\u6298\u6263\u53EA\u4F5C\u7528\u4E8E\u5546\u54C1\u91D1\u989D\uFF0C\u4E0D\u4F5C\u7528\u4E8E\u8FD0\u8D39\u3002\u7279\u4EF7\u5546\u54C1\u540E\u7EED\u53EF\u914D\u7F6E\u4E3A\u4E0D\u53C2\u4E0E\u4F1A\u5458\u6298\u6263\u3002</p></article>
       </div>
     `;
     }
     async function renderAdminPage() {
-      var _a;
+      var _a, _b;
       const mount = $2("[data-admin-page]");
       if (!mount) return;
       const key = window.localStorage.getItem("sa_admin_key") || (["localhost", "127.0.0.1"].includes(window.location.hostname) ? "dev-admin" : "");
@@ -1223,17 +1522,19 @@
       }
       window.localStorage.setItem("sa_admin_key", key);
       try {
-        const [members, orders, points, logs] = await Promise.all([
+        const [members, orders, points, logs, mallItems, mallRedemptions] = await Promise.all([
           apiFetch("/api/admin/members", { headers: { "x-admin-key": key } }),
           apiFetch("/api/admin/orders", { headers: { "x-admin-key": key } }),
           apiFetch("/api/admin/points", { headers: { "x-admin-key": key } }),
-          apiFetch("/api/admin/audit-logs", { headers: { "x-admin-key": key } })
+          apiFetch("/api/admin/audit-logs", { headers: { "x-admin-key": key } }),
+          adminGetPointsMallItems(key),
+          adminGetPointsRedemptions(key)
         ]);
         mount.innerHTML = `
         <div class="section-heading">
           <p class="eyebrow">Admin</p>
           <h2>\u4F1A\u5458\u4E0E\u8BA2\u5355\u7BA1\u7406</h2>
-          <p>\u672C\u9875\u9762\u7528\u4E8E\u672C\u5730\u5F00\u53D1\u786E\u8BA4\u652F\u4ED8\u548C\u9000\u6B3E\uFF0C\u4E0A\u7EBF\u524D\u5E94\u66FF\u6362\u4E3A\u6B63\u5F0F\u540E\u53F0\u8BA4\u8BC1\u3002</p>
+          <p>\u672C\u9875\u9762\u7528\u4E8E\u672C\u5730\u5F00\u53D1\u786E\u8BA4\u652F\u4ED8\u3001\u786E\u8BA4\u6536\u8D27\u548C\u9000\u6B3E\uFF0C\u4E0A\u7EBF\u524D\u5E94\u66FF\u6362\u4E3A\u6B63\u5F0F\u540E\u53F0\u8BA4\u8BC1\u3002</p>
           <button class="button button-secondary" type="button" data-admin-export>\u5BFC\u51FA\u4F1A\u5458\u540D\u5355</button>
         </div>
         <div class="admin-grid">
@@ -1259,11 +1560,12 @@
                   <div>
                     <h3>${order.orderNo}</h3>
                     <p>${order.items.map((item) => `${item.productName} x ${item.quantity}`).join("\u3001")}</p>
-                    <p>${orderStatusLabel(order.status)} \xB7 \u79EF\u5206 ${order.pointsAwarded}</p>
+                    <p>${orderStatusLabel(order.status)} \xB7 ${orderPointsText(order)}</p>
                   </div>
                   <strong>${moneyText(order.paidAmountYuan)}</strong>
                   ${order.status === "pending_payment" ? `<button class="button button-secondary" type="button" data-admin-pay="${order.id}">\u786E\u8BA4\u652F\u4ED8</button>` : ""}
-                  ${order.status === "paid" ? `<button class="button button-secondary" type="button" data-admin-refund="${order.id}">\u9000\u6B3E</button>` : ""}
+                  ${["paid", "shipped"].includes(order.status) ? `<button class="button button-secondary" type="button" data-admin-complete="${order.id}">\u786E\u8BA4\u6536\u8D27</button>` : ""}
+                  ${["paid", "shipped", "completed"].includes(order.status) ? `<button class="button button-secondary" type="button" data-admin-refund="${order.id}">\u9000\u6B3E</button>` : ""}
                 </article>
               `).join("")}
             </div>
@@ -1272,18 +1574,62 @@
             <h2>\u79EF\u5206\u6D41\u6C34</h2>
             <div class="member-table">
               ${points.transactions.slice(0, 10).map((item) => {
-          var _a2, _b, _c;
+          var _a2, _b2, _c;
           return `
                 <article>
                   <div>
                     <h3>${pointTypeLabel(item.type)}</h3>
-                    <p>${((_a2 = item.user) == null ? void 0 : _a2.name) || ((_b = item.user) == null ? void 0 : _b.email) || ((_c = item.user) == null ? void 0 : _c.phone) || "\u672A\u77E5\u4F1A\u5458"}${item.orderNo ? ` \xB7 ${item.orderNo}` : ""}</p>
+                    <p>${((_a2 = item.user) == null ? void 0 : _a2.name) || ((_b2 = item.user) == null ? void 0 : _b2.email) || ((_c = item.user) == null ? void 0 : _c.phone) || "\u672A\u77E5\u4F1A\u5458"}${item.orderNo ? ` \xB7 ${item.orderNo}` : ""}</p>
                   </div>
                   <strong>${item.points > 0 ? "+" : ""}${item.points}</strong>
                   <span>${new Date(item.createdAt).toLocaleString("zh-CN")}</span>
                 </article>
               `;
         }).join("") || `<div class="empty-state">\u6682\u65E0\u79EF\u5206\u6D41\u6C34\u3002</div>`}
+            </div>
+          </section>
+          <section>
+            <h2>\u79EF\u5206\u5546\u54C1</h2>
+            <form class="account-form compact-account-form" data-admin-mall-item-form>
+              <label class="field-label">\u540D\u79F0<input name="name" required></label>
+              <label class="field-label">\u5173\u8054\u5546\u54C1 ID<input name="productId" placeholder="\u53EF\u9009\uFF0C\u5982 tea-sample"></label>
+              <label class="field-label">\u79EF\u5206\u4EF7\u683C<input name="pointsPrice" type="number" min="1" required></label>
+              <label class="field-label">\u5E93\u5B58<input name="stockQuantity" type="number" min="0" required></label>
+              <button class="button button-secondary" type="submit">\u65B0\u589E\u79EF\u5206\u5546\u54C1</button>
+            </form>
+            <div class="member-table admin-nested-table">
+              ${mallItems.items.map((item) => `
+                <article>
+                  <div>
+                    <h3>${item.name}</h3>
+                    <p>${item.pointsPrice} \u79EF\u5206 \xB7 \u5E93\u5B58 ${item.stockQuantity} \xB7 ${mallItemStatusLabel(item.status)}</p>
+                  </div>
+                  ${item.status === "active" ? `<button class="button button-secondary" type="button" data-admin-mall-deactivate="${item.id}">\u4E0B\u67B6</button>` : ""}
+                  ${item.status !== "active" && item.stockQuantity > 0 ? `<button class="button button-secondary" type="button" data-admin-mall-activate="${item.id}">\u4E0A\u67B6</button>` : ""}
+                </article>
+              `).join("") || `<div class="empty-state">\u6682\u65E0\u79EF\u5206\u5546\u54C1\u3002</div>`}
+            </div>
+          </section>
+          <section>
+            <h2>\u5151\u6362\u8BA2\u5355</h2>
+            <div class="member-table">
+              ${mallRedemptions.redemptions.map((order) => {
+          var _a2, _b2, _c;
+          return `
+                <article>
+                  <div>
+                    <h3>${order.orderNo}</h3>
+                    <p>${order.items.map((item) => `${item.name} x ${item.quantity}`).join("\u3001")}</p>
+                    <p>${((_a2 = order.user) == null ? void 0 : _a2.name) || ((_b2 = order.user) == null ? void 0 : _b2.email) || ((_c = order.user) == null ? void 0 : _c.phone) || "\u672A\u77E5\u4F1A\u5458"} \xB7 ${redemptionStatusLabel(order.status)}</p>
+                  </div>
+                  <strong>${order.totalPoints} \u79EF\u5206</strong>
+                  ${order.status === "pending_fulfillment" ? `<button class="button button-secondary" type="button" data-admin-redemption-status="${order.id}" data-status="processing">\u5904\u7406</button>` : ""}
+                  ${["pending_fulfillment", "processing"].includes(order.status) ? `<button class="button button-secondary" type="button" data-admin-redemption-status="${order.id}" data-status="shipped">\u53D1\u8D27</button>` : ""}
+                  ${order.status === "shipped" ? `<button class="button button-secondary" type="button" data-admin-redemption-status="${order.id}" data-status="completed">\u5B8C\u6210</button>` : ""}
+                  ${!["cancelled", "completed"].includes(order.status) ? `<button class="button button-secondary" type="button" data-admin-redemption-cancel="${order.id}">\u53D6\u6D88</button>` : ""}
+                </article>
+              `;
+        }).join("") || `<div class="empty-state">\u6682\u65E0\u5151\u6362\u8BA2\u5355\u3002</div>`}
             </div>
           </section>
           <section>
@@ -1302,6 +1648,30 @@
           </section>
         </div>
       `;
+        (_b = $2("[data-admin-mall-item-form]", mount)) == null ? void 0 : _b.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const form = event.currentTarget;
+          const formData = new FormData(form);
+          try {
+            await apiFetch("/api/admin/points-mall/items", {
+              method: "POST",
+              headers: {
+                "x-admin-key": key
+              },
+              body: {
+                name: formData.get("name"),
+                productId: formData.get("productId"),
+                pointsPrice: Number(formData.get("pointsPrice")),
+                stockQuantity: Number(formData.get("stockQuantity")),
+                status: "active"
+              }
+            });
+            showToast("\u79EF\u5206\u5546\u54C1\u5DF2\u65B0\u589E\u3002");
+            await renderAdminPage();
+          } catch (error) {
+            showToast(error.message);
+          }
+        });
       } catch (error) {
         mount.innerHTML = `<div class="empty-state">${error.message}</div>`;
       }
@@ -1315,7 +1685,7 @@
         mounts.forEach((mount) => {
           mount.innerHTML = `
           <strong>${quote.tier.name}</strong>
-          <span>\u4F1A\u5458\u6298\u6263 ${moneyText(quote.memberDiscountAmountYuan)} \xB7 \u8FD0\u8D39 ${moneyText(quote.shippingAmountYuan)} \xB7 \u5E94\u4ED8 ${moneyText(quote.paidAmountYuan)} \xB7 \u9884\u8BA1\u83B7\u5F97 ${quote.pointsToEarn} \u79EF\u5206</span>
+          <span>\u4F1A\u5458\u6298\u6263 ${moneyText(quote.memberDiscountAmountYuan)} \xB7 \u8FD0\u8D39 ${moneyText(quote.shippingAmountYuan)} \xB7 \u5E94\u4ED8 ${moneyText(quote.paidAmountYuan)} \xB7 \u786E\u8BA4\u6536\u8D27\u540E\u9884\u8BA1\u83B7\u5F97 ${quote.pointsToEarn} \u79EF\u5206</span>
         `;
         });
       } catch (e) {

@@ -1199,7 +1199,7 @@ select {
 
 .tier-table div {
   display: grid;
-  grid-template-columns: 1.1fr repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1.1fr repeat(4, minmax(0, 1fr));
 }
 
 .tier-table div + div {
@@ -1233,6 +1233,83 @@ select {
   display: grid;
   grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
   gap: 20px;
+}
+
+.mall-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.mall-card {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  overflow: hidden;
+}
+
+.mall-image,
+.mall-detail-image {
+  display: block;
+  min-height: 220px;
+  background-size: cover;
+  background-position: center;
+}
+
+.mall-card > div {
+  padding: 0 18px;
+}
+
+.mall-card h2,
+.mall-detail h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.mall-card p,
+.mall-detail p {
+  color: var(--muted);
+}
+
+.mall-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 18px 18px;
+}
+
+.mall-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.75fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.mall-detail-image {
+  min-height: 520px;
+  border-radius: var(--radius);
+}
+
+.mall-detail-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.compact-summary {
+  margin-bottom: 0;
+}
+
+.admin-nested-table {
+  margin-top: 14px;
+}
+
+button:disabled,
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .toast {
@@ -1436,7 +1513,9 @@ select {
   .info-grid,
   .member-dashboard,
   .member-policy-list,
-  .admin-grid {
+  .admin-grid,
+  .mall-grid,
+  .mall-detail {
     grid-template-columns: 1fr;
   }
 

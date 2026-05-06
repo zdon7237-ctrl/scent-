@@ -14,7 +14,15 @@ import { cartStore } from "./cart-store.js";
 import { closeCart, openCart, renderCartPage, renderCartShell } from "./cart-ui.js";
 import { quoteCheckout } from "./checkout-client.js";
 import { startCheckout } from "./checkout.js";
-import { adminPayOrder, getMemberOrders, getMemberProfile, getPointTransactions, getTierProgress } from "./member-client.js";
+import { adminPayOrder, confirmReceiptOrder, getMemberOrders, getMemberProfile, getPointTransactions, getTierProgress } from "./member-client.js";
+import {
+  adminGetPointsMallItems,
+  adminGetPointsRedemptions,
+  getPointsMallItem,
+  getPointsMallItems,
+  getPointsRedemptions,
+  redeemPointsMallItem
+} from "./points-mall-client.js";
 
 if (hasCatalogData) {
   const state = {
@@ -39,6 +47,9 @@ if (hasCatalogData) {
   renderPointsPage();
   renderOrdersPage();
   renderMembershipPage();
+  renderPointsMallPage();
+  renderPointsMallItemPage();
+  renderPointsRedemptionsPage();
   renderAdminPage();
 
   function readStore(key, fallback) {
@@ -527,6 +538,8 @@ if (hasCatalogData) {
         <a class="text-link" href="account.html">会员中心</a>
         <a class="text-link" href="orders.html">订单记录</a>
         <a class="text-link" href="points.html">积分明细</a>
+        <a class="text-link" href="points-mall.html">积分商城</a>
+        <a class="text-link" href="points-redemptions.html">兑换记录</a>
         <a class="text-link" href="membership.html">会员规则</a>
       </nav>
     `;
@@ -593,7 +606,7 @@ if (hasCatalogData) {
           <article>
             <span class="eyebrow">Current tier</span>
             <h2>${data.tier.name}</h2>
-            <p>当前折扣：${discountLabel(data.tier.discountRate)} · 积分：实付 ¥1 = 1 积分</p>
+            <p>当前折扣：${discountLabel(data.tier.discountRate)} · 积分倍数：${data.tier.pointMultiplier || 1}x</p>
           </article>
           <article>
             <span class="eyebrow">Points</span>
@@ -649,12 +662,139 @@ if (hasCatalogData) {
             <article>
               <div>
                 <h3>${pointTypeLabel(item.type)}</h3>
-                <p>${item.note || ""}</p>
+                <p>${item.note || ""}${item.expiresAt ? ` · 有效至 ${new Date(item.expiresAt).toLocaleDateString("zh-CN")}` : ""}</p>
               </div>
               <strong>${item.points > 0 ? "+" : ""}${item.points}</strong>
               <span>${new Date(item.createdAt).toLocaleString("zh-CN")}</span>
             </article>
           `).join("") : `<div class="empty-state">暂无积分流水。</div>`}
+        </div>
+      `;
+    } catch {
+      mount.innerHTML = requireLoginMarkup();
+    }
+  }
+
+  async function renderPointsMallPage() {
+    const mount = $("[data-points-mall-page]");
+    if (!mount) return;
+    try {
+      const [profile, mall] = await Promise.all([getMemberProfile(), getPointsMallItems()]);
+      mount.innerHTML = `
+        ${memberNav()}
+        <div class="member-summary">
+          <strong>${profile.profile.availablePoints}</strong>
+          <span>可用积分</span>
+        </div>
+        <div class="mall-grid">
+          ${mall.items.length ? mall.items.map((item) => `
+            <article class="mall-card">
+              <a class="mall-image" href="points-item.html?id=${encodeURIComponent(item.id)}" style="background-image:url('${item.image}')"></a>
+              <div>
+                <p class="eyebrow">${item.stockQuantity > 0 ? `库存 ${item.stockQuantity}` : "已兑完"}</p>
+                <h2>${item.name}</h2>
+                <p>${item.description || ""}</p>
+              </div>
+              <div class="mall-card-footer">
+                <strong>${item.pointsPrice} 积分</strong>
+                <a class="button button-secondary" href="points-item.html?id=${encodeURIComponent(item.id)}">查看兑换</a>
+              </div>
+            </article>
+          `).join("") : `<div class="empty-state">暂无可兑换商品。</div>`}
+        </div>
+      `;
+    } catch {
+      mount.innerHTML = requireLoginMarkup();
+    }
+  }
+
+  async function renderPointsMallItemPage() {
+    const mount = $("[data-points-item-page]");
+    if (!mount) return;
+    const id = params().get("id");
+    if (!id) {
+      mount.innerHTML = `<div class="empty-state">积分商品不存在。</div>`;
+      return;
+    }
+    try {
+      const [profile, payload] = await Promise.all([getMemberProfile(), getPointsMallItem(id)]);
+      const item = payload.item;
+      mount.innerHTML = `
+        ${memberNav()}
+        <div class="mall-detail">
+          <div class="mall-detail-image" style="background-image:url('${item.image}')"></div>
+          <div class="mall-detail-panel">
+            <p class="eyebrow">${item.stockQuantity > 0 ? `库存 ${item.stockQuantity}` : "已兑完"}</p>
+            <h2>${item.name}</h2>
+            <p>${item.description || ""}</p>
+            <div class="member-summary compact-summary">
+              <strong>${item.pointsPrice}</strong>
+              <span>兑换积分 · 你有 ${profile.profile.availablePoints} 积分</span>
+            </div>
+            <form class="account-form compact-account-form" data-redeem-form>
+              <label class="field-label">兑换数量<input name="quantity" type="number" min="1" max="${item.stockQuantity}" value="1" required></label>
+              <label class="field-label">收件人<input name="recipientName" value="${profile.user.name || ""}"></label>
+              <label class="field-label">联系电话<input name="recipientPhone" value="${profile.user.phone || ""}"></label>
+              <label class="field-label">收货地址<input name="shippingAddress"></label>
+              <button class="button button-primary" type="submit" ${profile.profile.availablePoints < item.pointsPrice || item.stockQuantity <= 0 ? "disabled" : ""}>确认兑换</button>
+            </form>
+          </div>
+        </div>
+      `;
+      $("[data-redeem-form]", mount)?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        if (form.dataset.submitting === "true") return;
+        form.dataset.submitting = "true";
+        const submitButton = form.querySelector("button[type='submit']");
+        if (submitButton) submitButton.disabled = true;
+        const formData = new FormData(form);
+        const requestId = form.dataset.requestId || `${item.id}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        form.dataset.requestId = requestId;
+        try {
+          const result = await redeemPointsMallItem({
+            mallItemId: item.id,
+            quantity: Number(formData.get("quantity")),
+            recipientName: formData.get("recipientName"),
+            recipientPhone: formData.get("recipientPhone"),
+            shippingAddress: formData.get("shippingAddress"),
+            requestId
+          });
+          resetSessionCache();
+          showToast(`兑换成功，订单 ${result.order.orderNo}`);
+          setTimeout(() => {
+            window.location.href = "points-redemptions.html";
+          }, 700);
+        } catch (error) {
+          form.dataset.submitting = "false";
+          if (submitButton) submitButton.disabled = false;
+          showToast(error.message);
+        }
+      });
+    } catch {
+      mount.innerHTML = requireLoginMarkup();
+    }
+  }
+
+  async function renderPointsRedemptionsPage() {
+    const mount = $("[data-points-redemptions-page]");
+    if (!mount) return;
+    try {
+      const { redemptions } = await getPointsRedemptions();
+      mount.innerHTML = `
+        ${memberNav()}
+        <div class="member-table">
+          ${redemptions.length ? redemptions.map((order) => `
+            <article>
+              <div>
+                <h3>${order.orderNo}</h3>
+                <p>${order.items.map((item) => `${item.name} x ${item.quantity}`).join("、")}</p>
+                <p>${order.trackingNo ? `物流单号：${order.trackingNo}` : "等待后台处理"}</p>
+              </div>
+              <strong>${order.totalPoints} 积分</strong>
+              <span>${redemptionStatusLabel(order.status)}</span>
+            </article>
+          `).join("") : `<div class="empty-state">暂无兑换记录。</div>`}
         </div>
       `;
     } catch {
@@ -675,11 +815,12 @@ if (hasCatalogData) {
               <div>
                 <h3>${order.orderNo}</h3>
                 <p>${order.items.map((item) => `${item.productName} x ${item.quantity}`).join("、")}</p>
-                <p>会员折扣：${moneyText(order.memberDiscountAmountYuan)} · 预计/获得积分：${order.pointsAwarded || "待支付确认"}</p>
+                <p>会员折扣：${moneyText(order.memberDiscountAmountYuan)} · ${orderPointsText(order)}</p>
               </div>
               <strong>${moneyText(order.paidAmountYuan)}</strong>
               <span>${orderStatusLabel(order.status)}</span>
               ${order.status === "pending_payment" ? `<button class="button button-secondary" type="button" data-admin-pay="${order.id}">开发确认支付</button>` : ""}
+              ${["paid", "shipped"].includes(order.status) ? `<button class="button button-secondary" type="button" data-confirm-receipt="${order.id}">确认收货</button>` : ""}
             </article>
           `).join("") : `<div class="empty-state">暂无订单。</div>`}
         </div>
@@ -699,21 +840,24 @@ if (hasCatalogData) {
       current = null;
     }
     const tiers = [
-      ["普通会员", "¥0", "无", "满 ¥599 包邮"],
-      ["银卡会员", "¥3,000", "98 折", "满 ¥499 包邮"],
-      ["金卡会员", "¥8,000", "95 折", "满 ¥399 包邮"],
-      ["黑卡会员", "¥20,000", "92 折", "顺丰包邮"]
+      ["普通会员", "¥0", "无", "1.0x", "满 ¥599 包邮"],
+      ["银卡会员", "¥1,000", "95 折", "1.1x", "满 ¥499 包邮"],
+      ["金卡会员", "¥10,000", "92 折", "1.2x", "满 ¥399 包邮"],
+      ["钻卡会员", "¥20,000", "88 折", "1.5x", "顺丰包邮"],
+      ["黑卡会员", "¥50,000", "85 折", "2.0x", "顺丰包邮"],
+      ["至尊会员", "¥200,000", "8 折", "2.0x", "顺丰包邮"]
     ];
     mount.innerHTML = `
       ${memberNav()}
       ${current ? `<div class="member-summary"><strong>${current.tier.name}</strong><span>${current.nextTier ? `距离 ${current.nextTier.name} 还差 ${moneyText(current.amountToNextTierYuan)}` : "已达到最高等级"}</span></div>` : ""}
       <div class="tier-table">
-        <div><strong>等级</strong><strong>累计消费</strong><strong>折扣</strong><strong>免运</strong></div>
+        <div><strong>等级</strong><strong>累计消费</strong><strong>折扣</strong><strong>积分倍数</strong><strong>免运</strong></div>
         ${tiers.map((tier) => `<div>${tier.map((cell) => `<span>${cell}</span>`).join("")}</div>`).join("")}
       </div>
       <div class="policy-list member-policy-list">
-        <article><h2>积分计算</h2><p>每实际支付 ¥1 获得 1 积分。运费、取消订单和退款金额不计入积分。</p></article>
-        <article><h2>升级规则</h2><p>订单由后台确认支付后，系统自动累加有效消费并匹配最高可达等级。第一版会员等级永久保留，不做自动降级。</p></article>
+        <article><h2>积分计算</h2><p>积分按实付商品金额和当前等级倍数计算。运费、取消订单和退款金额不计入积分。</p></article>
+        <article><h2>升级规则</h2><p>订单由后台确认支付后不会立刻升级。客户确认收货后，系统才会累加有效消费并匹配最高可达等级；退款后重新按累计有效消费计算等级。</p></article>
+        <article><h2>积分有效期</h2><p>订单积分自确认收货日起一年有效，未来积分商城兑换会按 FIFO 先消耗最早获得的积分。积分暂不抵现金。</p></article>
         <article><h2>折扣规则</h2><p>会员折扣只作用于商品金额，不作用于运费。特价商品后续可配置为不参与会员折扣。</p></article>
       </div>
     `;
@@ -741,17 +885,19 @@ if (hasCatalogData) {
     }
     window.localStorage.setItem("sa_admin_key", key);
     try {
-      const [members, orders, points, logs] = await Promise.all([
+      const [members, orders, points, logs, mallItems, mallRedemptions] = await Promise.all([
         apiFetch("/api/admin/members", { headers: { "x-admin-key": key } }),
         apiFetch("/api/admin/orders", { headers: { "x-admin-key": key } }),
         apiFetch("/api/admin/points", { headers: { "x-admin-key": key } }),
-        apiFetch("/api/admin/audit-logs", { headers: { "x-admin-key": key } })
+        apiFetch("/api/admin/audit-logs", { headers: { "x-admin-key": key } }),
+        adminGetPointsMallItems(key),
+        adminGetPointsRedemptions(key)
       ]);
       mount.innerHTML = `
         <div class="section-heading">
           <p class="eyebrow">Admin</p>
           <h2>会员与订单管理</h2>
-          <p>本页面用于本地开发确认支付和退款，上线前应替换为正式后台认证。</p>
+          <p>本页面用于本地开发确认支付、确认收货和退款，上线前应替换为正式后台认证。</p>
           <button class="button button-secondary" type="button" data-admin-export>导出会员名单</button>
         </div>
         <div class="admin-grid">
@@ -777,11 +923,12 @@ if (hasCatalogData) {
                   <div>
                     <h3>${order.orderNo}</h3>
                     <p>${order.items.map((item) => `${item.productName} x ${item.quantity}`).join("、")}</p>
-                    <p>${orderStatusLabel(order.status)} · 积分 ${order.pointsAwarded}</p>
+                    <p>${orderStatusLabel(order.status)} · ${orderPointsText(order)}</p>
                   </div>
                   <strong>${moneyText(order.paidAmountYuan)}</strong>
                   ${order.status === "pending_payment" ? `<button class="button button-secondary" type="button" data-admin-pay="${order.id}">确认支付</button>` : ""}
-                  ${order.status === "paid" ? `<button class="button button-secondary" type="button" data-admin-refund="${order.id}">退款</button>` : ""}
+                  ${["paid", "shipped"].includes(order.status) ? `<button class="button button-secondary" type="button" data-admin-complete="${order.id}">确认收货</button>` : ""}
+                  ${["paid", "shipped", "completed"].includes(order.status) ? `<button class="button button-secondary" type="button" data-admin-refund="${order.id}">退款</button>` : ""}
                 </article>
               `).join("")}
             </div>
@@ -802,6 +949,47 @@ if (hasCatalogData) {
             </div>
           </section>
           <section>
+            <h2>积分商品</h2>
+            <form class="account-form compact-account-form" data-admin-mall-item-form>
+              <label class="field-label">名称<input name="name" required></label>
+              <label class="field-label">关联商品 ID<input name="productId" placeholder="可选，如 tea-sample"></label>
+              <label class="field-label">积分价格<input name="pointsPrice" type="number" min="1" required></label>
+              <label class="field-label">库存<input name="stockQuantity" type="number" min="0" required></label>
+              <button class="button button-secondary" type="submit">新增积分商品</button>
+            </form>
+            <div class="member-table admin-nested-table">
+              ${mallItems.items.map((item) => `
+                <article>
+                  <div>
+                    <h3>${item.name}</h3>
+                    <p>${item.pointsPrice} 积分 · 库存 ${item.stockQuantity} · ${mallItemStatusLabel(item.status)}</p>
+                  </div>
+                  ${item.status === "active" ? `<button class="button button-secondary" type="button" data-admin-mall-deactivate="${item.id}">下架</button>` : ""}
+                  ${item.status !== "active" && item.stockQuantity > 0 ? `<button class="button button-secondary" type="button" data-admin-mall-activate="${item.id}">上架</button>` : ""}
+                </article>
+              `).join("") || `<div class="empty-state">暂无积分商品。</div>`}
+            </div>
+          </section>
+          <section>
+            <h2>兑换订单</h2>
+            <div class="member-table">
+              ${mallRedemptions.redemptions.map((order) => `
+                <article>
+                  <div>
+                    <h3>${order.orderNo}</h3>
+                    <p>${order.items.map((item) => `${item.name} x ${item.quantity}`).join("、")}</p>
+                    <p>${order.user?.name || order.user?.email || order.user?.phone || "未知会员"} · ${redemptionStatusLabel(order.status)}</p>
+                  </div>
+                  <strong>${order.totalPoints} 积分</strong>
+                  ${order.status === "pending_fulfillment" ? `<button class="button button-secondary" type="button" data-admin-redemption-status="${order.id}" data-status="processing">处理</button>` : ""}
+                  ${["pending_fulfillment", "processing"].includes(order.status) ? `<button class="button button-secondary" type="button" data-admin-redemption-status="${order.id}" data-status="shipped">发货</button>` : ""}
+                  ${order.status === "shipped" ? `<button class="button button-secondary" type="button" data-admin-redemption-status="${order.id}" data-status="completed">完成</button>` : ""}
+                  ${!["cancelled", "completed"].includes(order.status) ? `<button class="button button-secondary" type="button" data-admin-redemption-cancel="${order.id}">取消</button>` : ""}
+                </article>
+              `).join("") || `<div class="empty-state">暂无兑换订单。</div>`}
+            </div>
+          </section>
+          <section>
             <h2>操作日志</h2>
             <div class="member-table">
               ${logs.logs.slice(0, 10).map((item) => `
@@ -817,6 +1005,30 @@ if (hasCatalogData) {
           </section>
         </div>
       `;
+      $("[data-admin-mall-item-form]", mount)?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const formData = new FormData(form);
+        try {
+          await apiFetch("/api/admin/points-mall/items", {
+            method: "POST",
+            headers: {
+              "x-admin-key": key
+            },
+            body: {
+              name: formData.get("name"),
+              productId: formData.get("productId"),
+              pointsPrice: Number(formData.get("pointsPrice")),
+              stockQuantity: Number(formData.get("stockQuantity")),
+              status: "active"
+            }
+          });
+          showToast("积分商品已新增。");
+          await renderAdminPage();
+        } catch (error) {
+          showToast(error.message);
+        }
+      });
     } catch (error) {
       mount.innerHTML = `<div class="empty-state">${error.message}</div>`;
     }
@@ -827,6 +1039,9 @@ if (hasCatalogData) {
       earn_order: "订单积分",
       use_order: "订单抵扣",
       refund_reversal: "退款扣回",
+      expire_points: "积分过期",
+      redeem_points: "积分兑换",
+      redeem_refund: "兑换返还",
       admin_adjust: "人工调整"
     }[type] || type;
   }
@@ -837,10 +1052,36 @@ if (hasCatalogData) {
       paid: "已支付",
       processing: "处理中",
       shipped: "已发货",
-      completed: "已完成",
+      completed: "已确认收货",
       cancelled: "已取消",
       refunded: "已退款"
     }[status] || status;
+  }
+
+  function redemptionStatusLabel(status) {
+    return {
+      pending_fulfillment: "待处理",
+      processing: "处理中",
+      shipped: "已发货",
+      completed: "已完成",
+      cancelled: "已取消"
+    }[status] || status;
+  }
+
+  function mallItemStatusLabel(status) {
+    return {
+      draft: "草稿",
+      active: "已上架",
+      inactive: "已下架",
+      sold_out: "已兑完"
+    }[status] || status;
+  }
+
+  function orderPointsText(order) {
+    if (order.pointsAwarded) return `已发放积分：${order.pointsAwarded}`;
+    if (["paid", "processing", "shipped"].includes(order.status)) return "确认收货后发放积分";
+    if (order.status === "refunded") return "已退款，不发放积分";
+    return "待支付确认";
   }
 
   function adminActionLabel(action) {
@@ -850,8 +1091,15 @@ if (hasCatalogData) {
       update_order_status: "修改订单状态",
       confirm_order_paid: "确认支付",
       refund_order: "退款",
+      confirm_order_received: "确认收货",
       create_member_tier: "新增会员等级",
-      update_member_tier: "更新会员等级"
+      update_member_tier: "更新会员等级",
+      create_points_mall_item: "新增积分商品",
+      update_points_mall_item: "更新积分商品",
+      activate_points_mall_item: "上架积分商品",
+      deactivate_points_mall_item: "下架积分商品",
+      update_points_redemption_status: "更新兑换订单",
+      cancel_points_redemption: "取消兑换订单"
     }[action] || action;
   }
 
@@ -864,7 +1112,7 @@ if (hasCatalogData) {
       mounts.forEach((mount) => {
         mount.innerHTML = `
           <strong>${quote.tier.name}</strong>
-          <span>会员折扣 ${moneyText(quote.memberDiscountAmountYuan)} · 运费 ${moneyText(quote.shippingAmountYuan)} · 应付 ${moneyText(quote.paidAmountYuan)} · 预计获得 ${quote.pointsToEarn} 积分</span>
+          <span>会员折扣 ${moneyText(quote.memberDiscountAmountYuan)} · 运费 ${moneyText(quote.shippingAmountYuan)} · 应付 ${moneyText(quote.paidAmountYuan)} · 确认收货后预计获得 ${quote.pointsToEarn} 积分</span>
         `;
       });
     } catch {
@@ -943,7 +1191,13 @@ if (hasCatalogData) {
       const logout = event.target.closest("[data-logout]");
       const adminPay = event.target.closest("[data-admin-pay]");
       const adminRefund = event.target.closest("[data-admin-refund]");
+      const adminComplete = event.target.closest("[data-admin-complete]");
+      const confirmReceipt = event.target.closest("[data-confirm-receipt]");
       const adminExport = event.target.closest("[data-admin-export]");
+      const adminMallActivate = event.target.closest("[data-admin-mall-activate]");
+      const adminMallDeactivate = event.target.closest("[data-admin-mall-deactivate]");
+      const adminRedemptionStatus = event.target.closest("[data-admin-redemption-status]");
+      const adminRedemptionCancel = event.target.closest("[data-admin-redemption-cancel]");
 
       if (add) addToCart(add.dataset.addCart);
       if (fav) toggleFavorite(fav.dataset.favorite);
@@ -986,7 +1240,37 @@ if (hasCatalogData) {
         try {
           await adminPayOrder(adminPay.dataset.adminPay, key);
           resetSessionCache();
-          showToast("订单已确认支付，积分和等级已更新。");
+          showToast("订单已确认支付，等待客户确认收货后结算积分和等级。");
+          await renderOrdersPage();
+          await initAuthHeader();
+        } catch (error) {
+          showToast(error.message);
+        }
+      }
+      if (confirmReceipt) {
+        try {
+          await confirmReceiptOrder(confirmReceipt.dataset.confirmReceipt);
+          resetSessionCache();
+          showToast("已确认收货，积分和等级已结算。");
+          await renderOrdersPage();
+          await initAuthHeader();
+        } catch (error) {
+          showToast(error.message);
+        }
+      }
+      if (adminComplete) {
+        const key = window.prompt("输入后台确认收货密钥", window.localStorage.getItem("sa_admin_key") || "dev-admin");
+        if (!key) return;
+        try {
+          await apiFetch(`/api/admin/orders/${encodeURIComponent(adminComplete.dataset.adminComplete)}/complete`, {
+            method: "POST",
+            headers: {
+              "x-admin-key": key
+            }
+          });
+          resetSessionCache();
+          showToast("订单已确认收货，积分和等级已结算。");
+          await renderAdminPage();
           await renderOrdersPage();
           await initAuthHeader();
         } catch (error) {
@@ -1008,6 +1292,67 @@ if (hasCatalogData) {
           await renderAdminPage();
           await renderOrdersPage();
           await initAuthHeader();
+        } catch (error) {
+          showToast(error.message);
+        }
+      }
+      if (adminMallActivate || adminMallDeactivate) {
+        const key = window.localStorage.getItem("sa_admin_key") || window.prompt("输入后台密钥", "dev-admin");
+        if (!key) return;
+        const node = adminMallActivate || adminMallDeactivate;
+        const action = adminMallActivate ? "activate" : "deactivate";
+        try {
+          await apiFetch(`/api/admin/points-mall/items/${encodeURIComponent(node.dataset.adminMallActivate || node.dataset.adminMallDeactivate)}/${action}`, {
+            method: "POST",
+            headers: {
+              "x-admin-key": key
+            }
+          });
+          showToast(action === "activate" ? "积分商品已上架。" : "积分商品已下架。");
+          await renderAdminPage();
+        } catch (error) {
+          showToast(error.message);
+        }
+      }
+      if (adminRedemptionStatus) {
+        const key = window.localStorage.getItem("sa_admin_key") || window.prompt("输入后台密钥", "dev-admin");
+        if (!key) return;
+        const trackingNo = adminRedemptionStatus.dataset.status === "shipped"
+          ? window.prompt("物流单号，可留空", "")
+          : "";
+        try {
+          await apiFetch(`/api/admin/points-mall/redemptions/${encodeURIComponent(adminRedemptionStatus.dataset.adminRedemptionStatus)}/status`, {
+            method: "PATCH",
+            headers: {
+              "x-admin-key": key
+            },
+            body: {
+              status: adminRedemptionStatus.dataset.status,
+              trackingNo
+            }
+          });
+          showToast("兑换订单状态已更新。");
+          await renderAdminPage();
+        } catch (error) {
+          showToast(error.message);
+        }
+      }
+      if (adminRedemptionCancel) {
+        const key = window.localStorage.getItem("sa_admin_key") || window.prompt("输入后台密钥", "dev-admin");
+        if (!key) return;
+        try {
+          await apiFetch(`/api/admin/points-mall/redemptions/${encodeURIComponent(adminRedemptionCancel.dataset.adminRedemptionCancel)}/cancel`, {
+            method: "POST",
+            headers: {
+              "x-admin-key": key
+            },
+            body: {
+              reason: "后台取消兑换"
+            }
+          });
+          resetSessionCache();
+          showToast("兑换订单已取消，积分和库存已返还。");
+          await renderAdminPage();
         } catch (error) {
           showToast(error.message);
         }

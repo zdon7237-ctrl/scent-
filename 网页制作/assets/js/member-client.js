@@ -23,6 +23,12 @@ export function getTierProgress() {
   return apiFetch("/api/member/tier-progress");
 }
 
+export function confirmReceiptOrder(orderId) {
+  return apiFetch(`/api/member/orders/${encodeURIComponent(orderId)}/confirm-receipt`, {
+    method: "POST"
+  });
+}
+
 export function adminPayOrder(orderId, key) {
   return apiFetch(`/api/admin/orders/${encodeURIComponent(orderId)}/pay`, {
     method: "POST",

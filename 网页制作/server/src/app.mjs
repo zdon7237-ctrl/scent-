@@ -27,49 +27,163 @@ function now() {
   return new Date().toISOString();
 }
 
-function defaultDb() {
-  const tiers = [
+function addYears(dateString, years) {
+  const date = new Date(dateString || now());
+  date.setFullYear(date.getFullYear() + years);
+  return date.toISOString();
+}
+
+function defaultTierDefinitions() {
+  return [
     {
-      id: randomUUID(),
       code: "base",
       name: "普通会员",
       minLifetimePaidAmount: 0,
       discountRate: 1,
+      pointMultiplier: 1,
       freeShippingThreshold: 59900,
       sortOrder: 1,
       isActive: true
     },
     {
-      id: randomUUID(),
       code: "silver",
       name: "银卡会员",
-      minLifetimePaidAmount: 300000,
-      discountRate: 0.98,
+      minLifetimePaidAmount: 100000,
+      discountRate: 0.95,
+      pointMultiplier: 1.1,
       freeShippingThreshold: 49900,
       sortOrder: 2,
       isActive: true
     },
     {
-      id: randomUUID(),
       code: "gold",
       name: "金卡会员",
-      minLifetimePaidAmount: 800000,
-      discountRate: 0.95,
+      minLifetimePaidAmount: 1000000,
+      discountRate: 0.92,
+      pointMultiplier: 1.2,
       freeShippingThreshold: 39900,
       sortOrder: 3,
       isActive: true
     },
     {
-      id: randomUUID(),
-      code: "black",
-      name: "黑卡会员",
+      code: "diamond",
+      name: "钻卡会员",
       minLifetimePaidAmount: 2000000,
-      discountRate: 0.92,
+      discountRate: 0.88,
+      pointMultiplier: 1.5,
       freeShippingThreshold: 0,
       sortOrder: 4,
       isActive: true
+    },
+    {
+      code: "black",
+      name: "黑卡会员",
+      minLifetimePaidAmount: 5000000,
+      discountRate: 0.85,
+      pointMultiplier: 2,
+      freeShippingThreshold: 0,
+      sortOrder: 5,
+      isActive: true
+    },
+    {
+      code: "supreme",
+      name: "至尊会员",
+      minLifetimePaidAmount: 20000000,
+      discountRate: 0.8,
+      pointMultiplier: 2,
+      freeShippingThreshold: 0,
+      sortOrder: 6,
+      isActive: true
     }
   ];
+}
+
+function defaultPointsMallItems() {
+  const createdAt = now();
+  return [
+    {
+      id: "pm-random-sample-1",
+      productId: null,
+      name: "官方随机小样 1 支",
+      description: "由后台根据库存随机发出 1 支官方小样，适合低积分试用。",
+      image: "https://images.unsplash.com/photo-1594035910387-fea47794261f?auto=format&fit=crop&w=1200&q=82",
+      pointsPrice: 300,
+      stockQuantity: 50,
+      status: "active",
+      sortOrder: 1,
+      startsAt: null,
+      endsAt: null,
+      createdAt,
+      updatedAt: createdAt
+    },
+    {
+      id: "pm-random-sample-3",
+      productId: null,
+      name: "官方随机小样 3 支",
+      description: "由后台根据库存随机发出 3 支官方小样，适合想一次试更多气味的会员。",
+      image: "https://images.unsplash.com/photo-1594035910387-fea47794261f?auto=format&fit=crop&w=1200&q=82",
+      pointsPrice: 800,
+      stockQuantity: 30,
+      status: "active",
+      sortOrder: 2,
+      startsAt: null,
+      endsAt: null,
+      createdAt,
+      updatedAt: createdAt
+    },
+    {
+      id: "pm-tea-official-samples",
+      productId: null,
+      name: "茶香官方小样组合",
+      description: "围绕茶香方向搭配的官方小样组合，适合喜欢红茶、乌龙和低甜香气的会员。",
+      image: "https://images.unsplash.com/photo-1615634260167-c8cdede054de?auto=format&fit=crop&w=1200&q=82",
+      pointsPrice: 600,
+      stockQuantity: 30,
+      status: "active",
+      sortOrder: 3,
+      startsAt: null,
+      endsAt: null,
+      createdAt,
+      updatedAt: createdAt
+    },
+    {
+      id: "pm-tea-sample",
+      productId: "tea-sample",
+      name: "茶香主题试香套装",
+      description: "从清透乌龙到温柔红茶，适合低甜度和东方感偏好。",
+      image: "",
+      pointsPrice: 1600,
+      stockQuantity: 10,
+      status: "active",
+      sortOrder: 4,
+      startsAt: null,
+      endsAt: null,
+      createdAt,
+      updatedAt: createdAt
+    },
+    {
+      id: "pm-wood-sample",
+      productId: "wood-sample",
+      name: "木质与焚香试香套装",
+      description: "偏冷感、雨天和树脂质地，适合想找更成熟气味的人。",
+      image: "",
+      pointsPrice: 1800,
+      stockQuantity: 10,
+      status: "active",
+      sortOrder: 5,
+      startsAt: null,
+      endsAt: null,
+      createdAt,
+      updatedAt: createdAt
+    }
+  ];
+}
+
+function defaultDb() {
+  const tiers = defaultTierDefinitions().map((tier) => ({
+    id: randomUUID(),
+    ...tier
+  }));
 
   return {
     users: [],
@@ -79,6 +193,9 @@ function defaultDb() {
     orderItems: [],
     pointTransactions: [],
     tierHistory: [],
+    pointsMallItems: defaultPointsMallItems(),
+    pointsRedemptionOrders: [],
+    pointsRedemptionItems: [],
     operationLogs: [],
     sessions: [],
     coupons: [],
@@ -96,6 +213,9 @@ function normalizeDb(db) {
     "orderItems",
     "pointTransactions",
     "tierHistory",
+    "pointsMallItems",
+    "pointsRedemptionOrders",
+    "pointsRedemptionItems",
     "operationLogs",
     "sessions",
     "coupons",
@@ -103,9 +223,36 @@ function normalizeDb(db) {
   ].forEach((key) => {
     if (!Array.isArray(normalized[key])) normalized[key] = [];
   });
-  normalized.memberTiers.forEach((tier) => {
-    delete tier.pointMultiplier;
+  const oldSeededTiers = {
+    base: { minLifetimePaidAmount: 0, discountRate: 1 },
+    silver: { minLifetimePaidAmount: 300000, discountRate: 0.98 },
+    gold: { minLifetimePaidAmount: 800000, discountRate: 0.95 },
+    black: { minLifetimePaidAmount: 2000000, discountRate: 0.92 }
+  };
+  defaultTierDefinitions().forEach((definition) => {
+    const existing = normalized.memberTiers.find((tier) => tier.code === definition.code);
+    if (!existing) {
+      normalized.memberTiers.push({
+        id: randomUUID(),
+        ...definition,
+        createdAt: now(),
+        updatedAt: now()
+      });
+      return;
+    }
+    const oldSeed = oldSeededTiers[definition.code];
+    const looksLikeOldSeed = oldSeed
+      && existing.minLifetimePaidAmount === oldSeed.minLifetimePaidAmount
+      && Number(existing.discountRate) === oldSeed.discountRate;
+    if (looksLikeOldSeed || existing.pointMultiplier === undefined) {
+      Object.assign(existing, definition);
+    } else if (existing.pointMultiplier === undefined || existing.pointMultiplier === null) {
+      existing.pointMultiplier = definition.pointMultiplier;
+    }
   });
+  if (!normalized.pointsMallItems.length) {
+    normalized.pointsMallItems.push(...defaultPointsMallItems());
+  }
   return normalized;
 }
 
@@ -226,6 +373,42 @@ function logAdminOperation(db, req, action, entityType, entityId, before, after,
   });
 }
 
+function expirePointsForUser(db, userId) {
+  const profile = db.memberProfiles.find((item) => item.userId === userId);
+  if (!profile) return false;
+  const expiredSourceIds = new Set(
+    db.pointTransactions
+      .filter((item) => item.type === "expire_points" && item.sourceTransactionId)
+      .map((item) => item.sourceTransactionId)
+  );
+  const nowMs = Date.now();
+  let changed = false;
+  db.pointTransactions
+    .filter((item) => isPointBatch(item) && item.userId === userId && item.expiresAt && new Date(item.expiresAt).getTime() <= nowMs)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    .forEach((item) => {
+      if (expiredSourceIds.has(item.id)) return;
+      const pointsToExpire = Math.min(pointBatchRemaining(db, item), Math.max(0, profile.availablePoints));
+      if (pointsToExpire <= 0) return;
+      profile.availablePoints -= pointsToExpire;
+      profile.updatedAt = now();
+      db.pointTransactions.push({
+        id: randomUUID(),
+        userId,
+        orderId: item.orderId || null,
+        sourceTransactionId: item.id,
+        type: "expire_points",
+        points: -pointsToExpire,
+        balanceAfter: profile.availablePoints,
+        expiresAt: null,
+        note: `积分于 ${new Date(item.expiresAt).toLocaleDateString("zh-CN")} 到期`,
+        createdAt: now()
+      });
+      changed = true;
+    });
+  return changed;
+}
+
 function sessionCookie(sessionId) {
   return `sa_session=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(sessionMaxAgeMs / 1000)}`;
 }
@@ -306,6 +489,216 @@ function canPurchase(item) {
   return Boolean(item && Number(item.price) > 0 && item.stock !== "售罄");
 }
 
+function mallItemPayload(item) {
+  const linkedProduct = item.productId ? catalogItemById(item.productId) : null;
+  const status = item.stockQuantity <= 0 && item.status === "active" ? "sold_out" : item.status;
+  return {
+    ...item,
+    productId: item.productId || null,
+    name: item.name || linkedProduct?.name || "积分商品",
+    description: item.description || linkedProduct?.intro || linkedProduct?.description || "",
+    image: item.image || linkedProduct?.image || "",
+    pointsPrice: Number(item.pointsPrice || 0),
+    stockQuantity: Math.max(0, Math.trunc(Number(item.stockQuantity || 0))),
+    status,
+    isRedeemable: status === "active" && Number(item.pointsPrice || 0) > 0 && Number(item.stockQuantity || 0) > 0
+  };
+}
+
+function activeMallItem(item) {
+  const payload = mallItemPayload(item);
+  const nowMs = Date.now();
+  const startsAt = item.startsAt ? new Date(item.startsAt).getTime() : null;
+  const endsAt = item.endsAt ? new Date(item.endsAt).getTime() : null;
+  return payload.status === "active"
+    && payload.stockQuantity > 0
+    && (!startsAt || startsAt <= nowMs)
+    && (!endsAt || endsAt >= nowMs);
+}
+
+function redemptionPayload(db, order, includeUser = false) {
+  const items = db.pointsRedemptionItems.filter((item) => item.redemptionOrderId === order.id);
+  const payload = {
+    ...order,
+    items
+  };
+  if (includeUser) {
+    payload.user = publicUser(db.users.find((item) => item.id === order.userId));
+  }
+  return payload;
+}
+
+function createRedemptionOrderNo() {
+  return `PM${new Date().toISOString().slice(0, 10).replaceAll("-", "")}${String(Math.floor(Math.random() * 1000000)).padStart(6, "0")}`;
+}
+
+function isPointBatch(transaction) {
+  return Number(transaction.points || 0) > 0 && transaction.type !== "redeem_refund";
+}
+
+function pointBatchRemaining(db, batch) {
+  const usedOrRestored = db.pointTransactions
+    .filter((item) => item.sourceTransactionId === batch.id)
+    .reduce((sum, item) => sum + Number(item.points || 0), 0);
+  return Math.max(0, Number(batch.points || 0) + usedOrRestored);
+}
+
+function availablePointBatches(db, userId) {
+  const nowMs = Date.now();
+  return db.pointTransactions
+    .filter((item) => isPointBatch(item)
+      && item.userId === userId
+      && (!item.expiresAt || new Date(item.expiresAt).getTime() > nowMs))
+    .map((item) => ({
+      ...item,
+      remainingPoints: pointBatchRemaining(db, item)
+    }))
+    .filter((item) => item.remainingPoints > 0)
+    .sort((a, b) => {
+      const aExpiry = a.expiresAt ? new Date(a.expiresAt).getTime() : Number.MAX_SAFE_INTEGER;
+      const bExpiry = b.expiresAt ? new Date(b.expiresAt).getTime() : Number.MAX_SAFE_INTEGER;
+      if (aExpiry !== bExpiry) return aExpiry - bExpiry;
+      return new Date(a.createdAt) - new Date(b.createdAt);
+    });
+}
+
+function redeemMemberPoints(db, userId, pointsNeeded, redemptionOrderId) {
+  expirePointsForUser(db, userId);
+  const profile = db.memberProfiles.find((item) => item.userId === userId);
+  const points = Math.trunc(Number(pointsNeeded || 0));
+  if (points <= 0) throw new Error("兑换积分必须大于 0。");
+  if (profile.availablePoints < points) throw new Error("可用积分不足。");
+  const batches = availablePointBatches(db, userId);
+  const availableFromBatches = batches.reduce((sum, item) => sum + item.remainingPoints, 0);
+  if (availableFromBatches < points) throw new Error("可用积分不足或积分已过期。");
+
+  let remaining = points;
+  const transactions = [];
+  batches.forEach((batch) => {
+    if (remaining <= 0) return;
+    const used = Math.min(batch.remainingPoints, remaining);
+    profile.availablePoints -= used;
+    profile.updatedAt = now();
+    const transaction = {
+      id: randomUUID(),
+      userId,
+      orderId: null,
+      redemptionOrderId,
+      sourceTransactionId: batch.id,
+      type: "redeem_points",
+      points: -used,
+      balanceAfter: profile.availablePoints,
+      expiresAt: null,
+      note: `积分商城兑换 ${redemptionOrderId}`,
+      createdAt: now()
+    };
+    db.pointTransactions.push(transaction);
+    transactions.push(transaction);
+    remaining -= used;
+  });
+
+  if (remaining > 0) throw new Error("可用积分不足。");
+  return transactions;
+}
+
+function createPointsRedemption(db, user, body) {
+  expirePointsForUser(db, user.id);
+  const itemId = String(body.mallItemId || body.itemId || body.id || "").trim();
+  const quantity = Math.max(1, Math.trunc(Number(body.quantity || 1)));
+  const requestId = String(body.requestId || "").trim();
+  if (!itemId) throw new Error("请选择要兑换的积分商品。");
+  if (requestId) {
+    const existing = db.pointsRedemptionOrders.find((item) => item.userId === user.id && item.requestId === requestId);
+    if (existing) return { order: existing, alreadyProcessed: true };
+  }
+  const item = db.pointsMallItems.find((entry) => entry.id === itemId);
+  if (!item) throw new Error("积分商品不存在。");
+  if (!activeMallItem(item)) throw new Error("该积分商品暂不可兑换。");
+  if (quantity > item.stockQuantity) throw new Error("积分商品库存不足。");
+  const itemPayload = mallItemPayload(item);
+  const totalPoints = itemPayload.pointsPrice * quantity;
+  const order = {
+    id: randomUUID(),
+    orderNo: createRedemptionOrderNo(),
+    requestId: requestId || null,
+    userId: user.id,
+    status: "pending_fulfillment",
+    totalPoints,
+    recipientName: String(body.recipientName || user.name || "").trim(),
+    recipientPhone: String(body.recipientPhone || user.phone || "").trim(),
+    shippingAddress: String(body.shippingAddress || "").trim(),
+    trackingNo: null,
+    shippedAt: null,
+    completedAt: null,
+    cancelledAt: null,
+    cancelReason: null,
+    createdAt: now(),
+    updatedAt: now()
+  };
+  db.pointsRedemptionOrders.push(order);
+  db.pointsRedemptionItems.push({
+    id: randomUUID(),
+    redemptionOrderId: order.id,
+    mallItemId: item.id,
+    productId: item.productId || null,
+    name: itemPayload.name,
+    pointsPrice: itemPayload.pointsPrice,
+    quantity,
+    subtotalPoints: totalPoints,
+    createdAt: now()
+  });
+  redeemMemberPoints(db, user.id, totalPoints, order.id);
+  item.stockQuantity -= quantity;
+  if (item.stockQuantity <= 0) {
+    item.stockQuantity = 0;
+    item.status = "sold_out";
+  }
+  item.updatedAt = now();
+  return { order, alreadyProcessed: false };
+}
+
+function cancelPointsRedemption(db, order, reason = "后台取消兑换") {
+  if (order.status === "cancelled") return { alreadyProcessed: true };
+  if (order.status === "completed") throw new Error("已完成兑换订单不能取消。");
+  const profile = db.memberProfiles.find((item) => item.userId === order.userId);
+  const deductions = db.pointTransactions.filter((item) => item.redemptionOrderId === order.id && item.type === "redeem_points");
+  const totalRefunded = deductions.reduce((sum, deduction) => {
+    const source = db.pointTransactions.find((item) => item.id === deduction.sourceTransactionId);
+    const points = Math.abs(Number(deduction.points || 0));
+    profile.availablePoints += points;
+    profile.updatedAt = now();
+    db.pointTransactions.push({
+      id: randomUUID(),
+      userId: order.userId,
+      orderId: null,
+      redemptionOrderId: order.id,
+      sourceTransactionId: deduction.sourceTransactionId || deduction.id,
+      type: "redeem_refund",
+      points,
+      balanceAfter: profile.availablePoints,
+      expiresAt: source ? source.expiresAt : addYears(now(), 1),
+      note: `积分商城兑换 ${order.orderNo} 取消返还`,
+      createdAt: now()
+    });
+    return sum + points;
+  }, 0);
+  db.pointsRedemptionItems
+    .filter((item) => item.redemptionOrderId === order.id)
+    .forEach((line) => {
+      const mallItem = db.pointsMallItems.find((item) => item.id === line.mallItemId);
+      if (!mallItem) return;
+      mallItem.stockQuantity += line.quantity;
+      if (mallItem.status === "sold_out") mallItem.status = "active";
+      mallItem.updatedAt = now();
+    });
+  order.status = "cancelled";
+  order.cancelReason = String(reason || "后台取消兑换");
+  order.cancelledAt = now();
+  order.updatedAt = now();
+  expirePointsForUser(db, order.userId);
+  return { pointsRefunded: totalRefunded };
+}
+
 function normalizeItems(items = []) {
   return items
     .map((entry) => ({
@@ -330,9 +723,10 @@ function calculateQuote(db, user, rawItems) {
     const unitPrice = money.fromYuan(item.price);
     const subtotalAmount = unitPrice * entry.quantity;
     const memberDiscountExcluded = Boolean(item.member_discount_excluded);
-    const memberDiscountAmount = memberDiscountExcluded
-      ? 0
-      : Math.floor(subtotalAmount * (1 - tier.discountRate));
+    const discountedAmount = memberDiscountExcluded
+      ? subtotalAmount
+      : Math.round(subtotalAmount * Number(tier.discountRate));
+    const memberDiscountAmount = subtotalAmount - discountedAmount;
     return {
       productId: item.id,
       productName: item.name,
@@ -357,7 +751,7 @@ function calculateQuote(db, user, rawItems) {
   const shippingAmount = tier.freeShippingThreshold === 0 || discountedProductAmount >= tier.freeShippingThreshold ? 0 : 2500;
   const paidAmount = discountedProductAmount + shippingAmount;
   const eligiblePaidAmount = Math.max(0, discountedProductAmount);
-  const pointsToEarn = Math.floor(eligiblePaidAmount / 100);
+  const pointsToEarn = Math.floor((eligiblePaidAmount / 100) * Number(tier.pointMultiplier || 1));
   const upcomingTier = nextTier(db, tier);
 
   return {
@@ -409,17 +803,37 @@ function orderPayload(db, order) {
   };
 }
 
-function earnPointsForPaidOrder(db, order) {
-  if (order.pointsAwarded > 0) return { points: order.pointsAwarded, upgraded: false };
+function markOrderPaid(order) {
+  if (order.status !== "pending_payment") return { alreadyProcessed: true };
+  order.status = "paid";
+  order.paidAt = order.paidAt || now();
+  order.updatedAt = now();
+  return { paid: true };
+}
+
+function settleCompletedOrder(db, order) {
+  if (order.pointsAwarded > 0) {
+    if (order.status !== "completed") {
+      order.status = "completed";
+      order.completedAt = order.completedAt || now();
+      order.updatedAt = now();
+    }
+    return { points: order.pointsAwarded, upgraded: false, alreadyProcessed: true };
+  }
+  if (!["paid", "processing", "shipped", "completed"].includes(order.status)) {
+    throw new Error("只有已支付或已发货订单可以确认收货。");
+  }
   const profile = db.memberProfiles.find((item) => item.userId === order.userId);
   const oldTier = db.memberTiers.find((item) => item.id === profile.tierId);
-  const points = Math.floor(order.eligiblePaidAmount / 100);
+  const orderTier = db.memberTiers.find((item) => item.id === order.memberTierId) || oldTier;
+  const completedAt = now();
+  const points = Math.floor((order.eligiblePaidAmount / 100) * Number(orderTier.pointMultiplier || 1));
   profile.availablePoints += points;
   profile.lifetimePaidAmount += order.eligiblePaidAmount;
   profile.updatedAt = now();
   order.pointsAwarded = points;
-  order.status = "paid";
-  order.paidAt = now();
+  order.status = "completed";
+  order.completedAt = completedAt;
   order.updatedAt = now();
   db.pointTransactions.push({
     id: randomUUID(),
@@ -428,9 +842,9 @@ function earnPointsForPaidOrder(db, order) {
     type: "earn_order",
     points,
     balanceAfter: profile.availablePoints,
-    expiresAt: null,
-    note: `订单 ${order.orderNo} 实付积分`,
-    createdAt: now()
+    expiresAt: addYears(completedAt, 1),
+    note: `订单 ${order.orderNo} 确认收货积分`,
+    createdAt: completedAt
   });
 
   const newTier = resolveTier(db, profile.lifetimePaidAmount);
@@ -442,7 +856,7 @@ function earnPointsForPaidOrder(db, order) {
       userId: order.userId,
       fromTierId: oldTier.id,
       toTierId: newTier.id,
-      reason: "order_paid",
+      reason: "order_completed",
       orderId: order.id,
       createdAt: now()
     });
@@ -453,27 +867,51 @@ function earnPointsForPaidOrder(db, order) {
 
 function refundPaidOrder(db, order) {
   if (order.status === "refunded") return { alreadyProcessed: true };
-  if (order.status !== "paid") throw new Error("只有已支付订单可以退款。");
+  if (!["paid", "processing", "shipped", "completed"].includes(order.status)) throw new Error("只有已支付订单可以退款。");
   const profile = db.memberProfiles.find((item) => item.userId === order.userId);
-  profile.availablePoints -= order.pointsAwarded;
-  profile.lifetimePaidAmount = Math.max(0, profile.lifetimePaidAmount - order.eligiblePaidAmount);
+  const oldTier = db.memberTiers.find((item) => item.id === profile.tierId);
+  const wasSettled = order.status === "completed" || Number(order.pointsAwarded || 0) > 0;
+  const pointsToReverse = Number(order.pointsAwarded || 0);
+  if (pointsToReverse > 0) profile.availablePoints -= pointsToReverse;
+  if (wasSettled) profile.lifetimePaidAmount = Math.max(0, profile.lifetimePaidAmount - order.eligiblePaidAmount);
   profile.updatedAt = now();
   order.status = "refunded";
+  order.refundedAt = now();
   order.updatedAt = now();
-  db.pointTransactions.push({
-    id: randomUUID(),
-    userId: order.userId,
-    orderId: order.id,
-    type: "refund_reversal",
-    points: -order.pointsAwarded,
-    balanceAfter: profile.availablePoints,
-    expiresAt: null,
-    note: `订单 ${order.orderNo} 退款扣回积分`,
-    createdAt: now()
-  });
+  if (pointsToReverse > 0) {
+    db.pointTransactions.push({
+      id: randomUUID(),
+      userId: order.userId,
+      orderId: order.id,
+      type: "refund_reversal",
+      points: -pointsToReverse,
+      balanceAfter: profile.availablePoints,
+      expiresAt: null,
+      note: `订单 ${order.orderNo} 退款扣回积分`,
+      createdAt: now()
+    });
+  }
+  const newTier = resolveTier(db, profile.lifetimePaidAmount);
+  let tierChanged = false;
+  if (newTier.id !== oldTier.id) {
+    profile.tierId = newTier.id;
+    profile.updatedAt = now();
+    tierChanged = true;
+    db.tierHistory.push({
+      id: randomUUID(),
+      userId: order.userId,
+      fromTierId: oldTier.id,
+      toTierId: newTier.id,
+      reason: "order_refunded",
+      orderId: order.id,
+      createdAt: now()
+    });
+  }
   return {
-    pointsReversed: order.pointsAwarded,
-    lifetimePaidAmount: profile.lifetimePaidAmount
+    pointsReversed: pointsToReverse,
+    lifetimePaidAmount: profile.lifetimePaidAmount,
+    tierChanged,
+    toTier: newTier
   };
 }
 
@@ -549,12 +987,14 @@ async function handleApi(req, res, pathname) {
     }
 
     if (req.method === "GET" && pathname === "/api/auth/me") {
+      if (user && expirePointsForUser(db, user.id)) await writeDb(db);
       return sendJson(res, 200, user ? profilePayload(db, user) : { user: null });
     }
 
     if (pathname.startsWith("/api/member") && !user) return sendError(res, 401, "请先登录。");
 
     if (req.method === "GET" && pathname === "/api/member/profile") {
+      if (expirePointsForUser(db, user.id)) await writeDb(db);
       return sendJson(res, 200, profilePayload(db, user));
     }
 
@@ -570,6 +1010,7 @@ async function handleApi(req, res, pathname) {
     }
 
     if (req.method === "GET" && pathname === "/api/member/points") {
+      if (expirePointsForUser(db, user.id)) await writeDb(db);
       return sendJson(res, 200, {
         transactions: db.pointTransactions
           .filter((item) => item.userId === user.id)
@@ -586,7 +1027,21 @@ async function handleApi(req, res, pathname) {
       });
     }
 
+    const confirmReceiptMatch = pathname.match(/^\/api\/member\/orders\/([^/]+)\/confirm-receipt$/);
+    if (req.method === "POST" && confirmReceiptMatch) {
+      const order = db.orders.find((item) => item.id === confirmReceiptMatch[1] && item.userId === user.id);
+      if (!order) return sendError(res, 404, "订单不存在。");
+      const result = settleCompletedOrder(db, order);
+      await writeDb(db);
+      return sendJson(res, 200, {
+        order: orderPayload(db, order),
+        result,
+        member: profilePayload(db, user)
+      });
+    }
+
     if (req.method === "GET" && pathname === "/api/member/tier-progress") {
+      if (expirePointsForUser(db, user.id)) await writeDb(db);
       const payload = profilePayload(db, user);
       return sendJson(res, 200, {
         tier: payload.tier,
@@ -596,6 +1051,51 @@ async function handleApi(req, res, pathname) {
         amountToNextTier: payload.amountToNextTier,
         amountToNextTierYuan: payload.amountToNextTierYuan
       });
+    }
+
+    if (req.method === "GET" && pathname === "/api/points-mall/items") {
+      return sendJson(res, 200, {
+        items: db.pointsMallItems
+          .filter((item) => activeMallItem(item))
+          .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+          .map(mallItemPayload)
+      });
+    }
+
+    const mallItemMatch = pathname.match(/^\/api\/points-mall\/items\/([^/]+)$/);
+    if (req.method === "GET" && mallItemMatch) {
+      const item = db.pointsMallItems.find((entry) => entry.id === mallItemMatch[1]);
+      if (!item || !activeMallItem(item)) return sendError(res, 404, "积分商品不存在或已下架。");
+      return sendJson(res, 200, { item: mallItemPayload(item) });
+    }
+
+    if (req.method === "POST" && pathname === "/api/points-mall/redeem") {
+      if (!user) return sendError(res, 401, "请先登录后兑换。");
+      const result = createPointsRedemption(db, user, body);
+      await writeDb(db);
+      return sendJson(res, result.alreadyProcessed ? 200 : 201, {
+        order: redemptionPayload(db, result.order),
+        alreadyProcessed: result.alreadyProcessed,
+        member: profilePayload(db, user)
+      });
+    }
+
+    if (req.method === "GET" && pathname === "/api/points-mall/redemptions") {
+      if (!user) return sendError(res, 401, "请先登录后查看兑换记录。");
+      return sendJson(res, 200, {
+        redemptions: db.pointsRedemptionOrders
+          .filter((item) => item.userId === user.id)
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+          .map((order) => redemptionPayload(db, order))
+      });
+    }
+
+    const redemptionMatch = pathname.match(/^\/api\/points-mall\/redemptions\/([^/]+)$/);
+    if (req.method === "GET" && redemptionMatch) {
+      if (!user) return sendError(res, 401, "请先登录后查看兑换记录。");
+      const order = db.pointsRedemptionOrders.find((item) => item.id === redemptionMatch[1] && item.userId === user.id);
+      if (!order) return sendError(res, 404, "兑换订单不存在。");
+      return sendJson(res, 200, { redemption: redemptionPayload(db, order) });
     }
 
     if (req.method === "POST" && pathname === "/api/checkout/quote") {
@@ -620,9 +1120,12 @@ async function handleApi(req, res, pathname) {
         eligiblePaidAmount: quote.eligiblePaidAmount,
         pointsUsed: 0,
         pointsAwarded: 0,
+        memberTierId: quote.tier.id,
         paymentProvider: "manual",
         paymentReference: null,
         paidAt: null,
+        completedAt: null,
+        refundedAt: null,
         createdAt: now(),
         updatedAt: now()
       };
@@ -653,7 +1156,7 @@ async function handleApi(req, res, pathname) {
       return sendJson(res, 200, {
         status: "pending_manual_payment",
         order: orderPayload(db, order),
-        message: `订单 ${order.orderNo} 已创建，待后台确认支付后会自动发放积分并更新等级。`
+        message: `订单 ${order.orderNo} 已创建。后台确认支付后，客户确认收货才会发放积分并更新等级。`
       });
     }
 
@@ -663,7 +1166,7 @@ async function handleApi(req, res, pathname) {
       if (!order) return sendError(res, 404, "订单不存在。");
       if (body.status !== "paid") return sendError(res, 400, "当前只支持 paid 支付事件。");
       if (order.status !== "pending_payment") return sendJson(res, 200, { order: orderPayload(db, order), alreadyProcessed: true });
-      const result = earnPointsForPaidOrder(db, order);
+      const result = markOrderPaid(order);
       await writeDb(db);
       return sendJson(res, 200, {
         order: orderPayload(db, order),
@@ -685,6 +1188,11 @@ async function handleApi(req, res, pathname) {
       }
 
       if (req.method === "GET" && pathname === "/api/admin/points") {
+        let changed = false;
+        db.users.forEach((item) => {
+          if (expirePointsForUser(db, item.id)) changed = true;
+        });
+        if (changed) await writeDb(db);
         return sendJson(res, 200, {
           transactions: db.pointTransactions
             .map((transaction) => {
@@ -700,7 +1208,161 @@ async function handleApi(req, res, pathname) {
         });
       }
 
+      if (req.method === "GET" && pathname === "/api/admin/points-mall/items") {
+        return sendJson(res, 200, {
+          items: db.pointsMallItems
+            .slice()
+            .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+            .map(mallItemPayload)
+        });
+      }
+
+      if (req.method === "POST" && pathname === "/api/admin/points-mall/items") {
+        const productId = body.productId ? String(body.productId).trim() : null;
+        const linkedProduct = productId ? catalogItemById(productId) : null;
+        if (productId && !linkedProduct) return sendError(res, 404, "关联商品不存在。");
+        const name = String(body.name || linkedProduct?.name || "").trim();
+        const pointsPrice = Math.trunc(Number(body.pointsPrice || 0));
+        const stockQuantity = Math.max(0, Math.trunc(Number(body.stockQuantity || 0)));
+        const status = String(body.status || "draft");
+        const allowed = ["draft", "active", "inactive", "sold_out"];
+        if (!name) return sendError(res, 400, "积分商品名称必填。");
+        if (pointsPrice <= 0) return sendError(res, 400, "兑换积分必须大于 0。");
+        if (!allowed.includes(status)) return sendError(res, 400, "积分商品状态不合法。");
+        const item = {
+          id: randomUUID(),
+          productId,
+          name,
+          description: String(body.description || linkedProduct?.intro || linkedProduct?.description || "").trim(),
+          image: String(body.image || linkedProduct?.image || "").trim(),
+          pointsPrice,
+          stockQuantity,
+          status,
+          sortOrder: Math.trunc(Number(body.sortOrder || db.pointsMallItems.length + 1)),
+          startsAt: body.startsAt || null,
+          endsAt: body.endsAt || null,
+          createdAt: now(),
+          updatedAt: now()
+        };
+        db.pointsMallItems.push(item);
+        logAdminOperation(db, req, "create_points_mall_item", "points_mall_item", item.id, null, item, body.reason || "新增积分商品");
+        await writeDb(db);
+        return sendJson(res, 201, { item: mallItemPayload(item) });
+      }
+
+      const mallAdminActionMatch = pathname.match(/^\/api\/admin\/points-mall\/items\/([^/]+)\/(activate|deactivate)$/);
+      if (req.method === "POST" && mallAdminActionMatch) {
+        const item = db.pointsMallItems.find((entry) => entry.id === mallAdminActionMatch[1]);
+        if (!item) return sendError(res, 404, "积分商品不存在。");
+        const before = snapshot(item);
+        item.status = mallAdminActionMatch[2] === "activate" ? "active" : "inactive";
+        if (item.status === "active" && item.stockQuantity <= 0) return sendError(res, 400, "库存为 0，不能上架。");
+        item.updatedAt = now();
+        logAdminOperation(
+          db,
+          req,
+          mallAdminActionMatch[2] === "activate" ? "activate_points_mall_item" : "deactivate_points_mall_item",
+          "points_mall_item",
+          item.id,
+          before,
+          item,
+          body.reason || (mallAdminActionMatch[2] === "activate" ? "上架积分商品" : "下架积分商品")
+        );
+        await writeDb(db);
+        return sendJson(res, 200, { item: mallItemPayload(item) });
+      }
+
+      const mallAdminItemMatch = pathname.match(/^\/api\/admin\/points-mall\/items\/([^/]+)$/);
+      if (req.method === "PATCH" && mallAdminItemMatch) {
+        const item = db.pointsMallItems.find((entry) => entry.id === mallAdminItemMatch[1]);
+        if (!item) return sendError(res, 404, "积分商品不存在。");
+        const before = snapshot(item);
+        if ("productId" in body) {
+          const productId = body.productId ? String(body.productId).trim() : null;
+          if (productId && !catalogItemById(productId)) return sendError(res, 404, "关联商品不存在。");
+          item.productId = productId;
+        }
+        if ("name" in body) item.name = String(body.name || "").trim();
+        if ("description" in body) item.description = String(body.description || "").trim();
+        if ("image" in body) item.image = String(body.image || "").trim();
+        if ("pointsPrice" in body) {
+          const pointsPrice = Math.trunc(Number(body.pointsPrice));
+          if (pointsPrice <= 0) return sendError(res, 400, "兑换积分必须大于 0。");
+          item.pointsPrice = pointsPrice;
+        }
+        if ("stockQuantity" in body) item.stockQuantity = Math.max(0, Math.trunc(Number(body.stockQuantity)));
+        if ("status" in body) {
+          const status = String(body.status || "");
+          if (!["draft", "active", "inactive", "sold_out"].includes(status)) return sendError(res, 400, "积分商品状态不合法。");
+          if (status === "active" && item.stockQuantity <= 0) return sendError(res, 400, "库存为 0，不能上架。");
+          item.status = status;
+        }
+        if ("sortOrder" in body) item.sortOrder = Math.trunc(Number(body.sortOrder));
+        if ("startsAt" in body) item.startsAt = body.startsAt || null;
+        if ("endsAt" in body) item.endsAt = body.endsAt || null;
+        item.updatedAt = now();
+        logAdminOperation(db, req, "update_points_mall_item", "points_mall_item", item.id, before, item, body.reason || "更新积分商品");
+        await writeDb(db);
+        return sendJson(res, 200, { item: mallItemPayload(item) });
+      }
+
+      if (req.method === "GET" && pathname === "/api/admin/points-mall/redemptions") {
+        return sendJson(res, 200, {
+          redemptions: db.pointsRedemptionOrders
+            .slice()
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            .map((order) => redemptionPayload(db, order, true))
+        });
+      }
+
+      const adminRedemptionStatusMatch = pathname.match(/^\/api\/admin\/points-mall\/redemptions\/([^/]+)\/status$/);
+      if (req.method === "PATCH" && adminRedemptionStatusMatch) {
+        const order = db.pointsRedemptionOrders.find((item) => item.id === adminRedemptionStatusMatch[1]);
+        if (!order) return sendError(res, 404, "兑换订单不存在。");
+        const before = redemptionPayload(db, order, true);
+        const status = String(body.status || "");
+        const allowed = ["pending_fulfillment", "processing", "shipped", "completed", "cancelled"];
+        if (!allowed.includes(status)) return sendError(res, 400, "兑换订单状态不合法。");
+        let result = null;
+        if (status === "cancelled") {
+          result = cancelPointsRedemption(db, order, body.reason || "后台取消兑换");
+        } else {
+          if (order.status === "cancelled") return sendError(res, 400, "已取消兑换订单不能改状态。");
+          order.status = status;
+          if ("trackingNo" in body) order.trackingNo = String(body.trackingNo || "").trim() || null;
+          if (status === "shipped") order.shippedAt = order.shippedAt || now();
+          if (status === "completed") order.completedAt = order.completedAt || now();
+          order.updatedAt = now();
+        }
+        logAdminOperation(db, req, "update_points_redemption_status", "points_redemption_order", order.id, before, redemptionPayload(db, order, true), body.reason || `兑换订单状态调整为 ${status}`);
+        await writeDb(db);
+        return sendJson(res, 200, { redemption: redemptionPayload(db, order, true), result });
+      }
+
+      const adminRedemptionCancelMatch = pathname.match(/^\/api\/admin\/points-mall\/redemptions\/([^/]+)\/cancel$/);
+      if (req.method === "POST" && adminRedemptionCancelMatch) {
+        const order = db.pointsRedemptionOrders.find((item) => item.id === adminRedemptionCancelMatch[1]);
+        if (!order) return sendError(res, 404, "兑换订单不存在。");
+        const before = redemptionPayload(db, order, true);
+        const result = cancelPointsRedemption(db, order, body.reason || "后台取消兑换");
+        logAdminOperation(db, req, "cancel_points_redemption", "points_redemption_order", order.id, before, redemptionPayload(db, order, true), body.reason || "后台取消兑换");
+        await writeDb(db);
+        return sendJson(res, 200, { redemption: redemptionPayload(db, order, true), result });
+      }
+
+      const adminRedemptionMatch = pathname.match(/^\/api\/admin\/points-mall\/redemptions\/([^/]+)$/);
+      if (req.method === "GET" && adminRedemptionMatch) {
+        const order = db.pointsRedemptionOrders.find((item) => item.id === adminRedemptionMatch[1]);
+        if (!order) return sendError(res, 404, "兑换订单不存在。");
+        return sendJson(res, 200, { redemption: redemptionPayload(db, order, true) });
+      }
+
       if (req.method === "GET" && pathname === "/api/admin/members") {
+        let changed = false;
+        db.users.forEach((item) => {
+          if (expirePointsForUser(db, item.id)) changed = true;
+        });
+        if (changed) await writeDb(db);
         return sendJson(res, 200, {
           members: db.users.map((item) => profilePayload(db, item))
         });
@@ -788,7 +1450,7 @@ async function handleApi(req, res, pathname) {
           type: "admin_adjust",
           points,
           balanceAfter: profile.availablePoints,
-          expiresAt: null,
+          expiresAt: points > 0 ? addYears(now(), 1) : null,
           note: String(body.note || "后台积分调整"),
           createdAt: now()
         });
@@ -824,7 +1486,9 @@ async function handleApi(req, res, pathname) {
         const before = orderPayload(db, order);
         let result = null;
         if (body.status === "paid" && order.status === "pending_payment") {
-          result = earnPointsForPaidOrder(db, order);
+          result = markOrderPaid(order);
+        } else if (body.status === "completed") {
+          result = settleCompletedOrder(db, order);
         } else if (body.status === "refunded" && order.status !== "refunded") {
           result = refundPaidOrder(db, order);
         } else {
@@ -856,6 +1520,8 @@ async function handleApi(req, res, pathname) {
         if (db.memberTiers.some((item) => item.code === code)) return sendError(res, 409, "等级 code 已存在。");
         const discountRate = Number(body.discountRate ?? 1);
         if (!Number.isFinite(discountRate) || discountRate <= 0 || discountRate > 1) return sendError(res, 400, "折扣率必须在 0 到 1 之间。");
+        const pointMultiplier = Number(body.pointMultiplier ?? 1);
+        if (!Number.isFinite(pointMultiplier) || pointMultiplier <= 0) return sendError(res, 400, "积分倍数必须大于 0。");
         const tier = {
           id: randomUUID(),
           code,
@@ -864,6 +1530,7 @@ async function handleApi(req, res, pathname) {
             ? money.fromYuan(body.minLifetimePaidAmountYuan)
             : Math.max(0, Math.trunc(Number(body.minLifetimePaidAmount || 0))),
           discountRate,
+          pointMultiplier,
           freeShippingThreshold: "freeShippingThresholdYuan" in body
             ? money.fromYuan(body.freeShippingThresholdYuan)
             : Math.max(0, Math.trunc(Number(body.freeShippingThreshold || 0))),
@@ -892,6 +1559,11 @@ async function handleApi(req, res, pathname) {
           if (!Number.isFinite(discountRate) || discountRate <= 0 || discountRate > 1) return sendError(res, 400, "折扣率必须在 0 到 1 之间。");
           tier.discountRate = discountRate;
         }
+        if ("pointMultiplier" in body) {
+          const pointMultiplier = Number(body.pointMultiplier);
+          if (!Number.isFinite(pointMultiplier) || pointMultiplier <= 0) return sendError(res, 400, "积分倍数必须大于 0。");
+          tier.pointMultiplier = pointMultiplier;
+        }
         if ("freeShippingThresholdYuan" in body) tier.freeShippingThreshold = money.fromYuan(body.freeShippingThresholdYuan);
         if ("freeShippingThreshold" in body) tier.freeShippingThreshold = Math.max(0, Math.trunc(Number(body.freeShippingThreshold)));
         if ("sortOrder" in body) tier.sortOrder = Math.trunc(Number(body.sortOrder));
@@ -908,8 +1580,23 @@ async function handleApi(req, res, pathname) {
         if (!order) return sendError(res, 404, "订单不存在。");
         if (order.status !== "pending_payment") return sendJson(res, 200, { order: orderPayload(db, order), alreadyProcessed: true });
         const before = orderPayload(db, order);
-        const result = earnPointsForPaidOrder(db, order);
+        const result = markOrderPaid(order);
         logAdminOperation(db, req, "confirm_order_paid", "order", order.id, before, orderPayload(db, order), body.reason || "后台确认支付");
+        await writeDb(db);
+        return sendJson(res, 200, {
+          order: orderPayload(db, order),
+          result,
+          member: profilePayload(db, db.users.find((item) => item.id === order.userId))
+        });
+      }
+
+      const completeMatch = pathname.match(/^\/api\/admin\/orders\/([^/]+)\/complete$/);
+      if (req.method === "POST" && completeMatch) {
+        const order = db.orders.find((item) => item.id === completeMatch[1]);
+        if (!order) return sendError(res, 404, "订单不存在。");
+        const before = orderPayload(db, order);
+        const result = settleCompletedOrder(db, order);
+        logAdminOperation(db, req, "confirm_order_received", "order", order.id, before, orderPayload(db, order), body.reason || "确认收货结算会员权益");
         await writeDb(db);
         return sendJson(res, 200, {
           order: orderPayload(db, order),

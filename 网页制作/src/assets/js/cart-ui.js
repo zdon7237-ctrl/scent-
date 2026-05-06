@@ -47,7 +47,7 @@ export function cartMarkup(compact = true) {
     </div>
     <div class="member-quote" data-member-quote>登录后可查看会员折扣和预计积分。</div>
     <button class="button button-primary full" type="button" data-checkout>提交订单</button>
-    ${compact ? `<a class="text-link" href="cart.html">查看完整购物车</a>` : `<p class="service-note">订单提交后由后台确认支付，支付确认后自动发放积分和更新等级。</p>`}
+    ${compact ? `<a class="text-link" href="cart.html">查看完整购物车</a>` : `<p class="service-note">订单提交后由后台确认支付，客户确认收货后自动发放积分和更新等级。</p>`}
   `;
 }
 
