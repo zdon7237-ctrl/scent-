@@ -6,6 +6,8 @@
 npm start
 ```
 
+`npm start` 会先执行构建，然后从 `dist` 目录提供静态页面。需要临时服务其他目录时，可以设置 `PUBLIC_DIR`。
+
 启动后访问：
 
 ```text

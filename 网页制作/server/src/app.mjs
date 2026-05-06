@@ -6,9 +6,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const modulePath = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(modulePath);
 const rootDir = path.resolve(__dirname, "../..");
-const publicDir = path.resolve(process.env.PUBLIC_DIR || rootDir);
+const publicDir = path.resolve(process.env.PUBLIC_DIR || path.join(rootDir, "dist"));
 const dataFile = path.resolve(process.env.MEMBER_DB || path.join(rootDir, "server/data/db.json"));
 const port = Number(process.env.PORT || 8788);
 const sessionMaxAgeMs = 1000 * 60 * 60 * 24 * 30;
@@ -1667,7 +1668,11 @@ const server = createServer(async (req, res) => {
   await serveStatic(req, res, url.pathname);
 });
 
-server.listen(port, () => {
-  console.log(`Scent Archive server running at http://localhost:${port}`);
-  console.log(`Admin key: ${adminKey}`);
-});
+export { server };
+
+if (process.argv[1] && path.resolve(process.argv[1]) === modulePath) {
+  server.listen(port, () => {
+    console.log(`Scent Archive server running at http://localhost:${port}`);
+    console.log(`Admin key: ${adminKey}`);
+  });
+}
