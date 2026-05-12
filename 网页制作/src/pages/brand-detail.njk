@@ -1,0 +1,39 @@
+---
+pagination:
+  data: catalog.brandsForPages
+  size: 1
+  alias: brand
+permalink: "{{ brand.pagePath }}"
+layout: layout.njk
+pageKey: "brands"
+mainClass: "page-shell"
+eleventyComputed:
+  title: "{{ brand.name }} | 馥屿"
+  description: "{{ brand.intro }}"
+  canonicalPath: "/{{ brand.pagePath }}"
+  mainAttributes: "data-brand-page data-entry-id=\"{{ brand.id }}\""
+---
+<section class="split-hero compact-hero">
+  <div class="split-copy">
+    <nav class="breadcrumb" aria-label="面包屑">
+      <a href="brands.html">品牌</a>
+      <span>/</span>
+      <span>{{ brand.name }}</span>
+    </nav>
+    <p class="eyebrow">{{ brand.country }}</p>
+    <h1>{{ brand.name }}</h1>
+    <p>{{ brand.intro }}</p>
+  </div>
+  <div class="split-image" style="--image: url('{{ brand.hero }}')"></div>
+</section>
+<section class="detail-panels">
+  <article>
+    <h2>品牌故事</h2>
+    <p>{{ brand.story }}</p>
+  </article>
+  <article>
+    <h2>创作信息</h2>
+    <p><strong>创办人 / 调香：</strong>{{ brand.founder }}</p>
+    <p><strong>买手入门款：</strong>{{ brand.starter }}</p>
+  </article>
+</section>

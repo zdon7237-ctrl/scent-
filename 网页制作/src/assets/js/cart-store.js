@@ -23,7 +23,7 @@ function cleanQuantity(value) {
 
 function validatedItem(id) {
   const item = catalogItemById(id);
-  if (!item) throw new Error("商品不存在，无法加入购物车。");
+  if (!item) throw new Error("商品不存在，无法加入意向清单。");
   if (!canPurchase(item)) throw new Error("当前商品暂不可购买。");
   return item;
 }

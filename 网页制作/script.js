@@ -40,7 +40,6 @@
   // src/assets/js/member-client.js
   var member_client_exports = {};
   __export(member_client_exports, {
-    adminPayOrder: () => adminPayOrder,
     confirmReceiptOrder: () => confirmReceiptOrder,
     getMemberOrders: () => getMemberOrders,
     getMemberProfile: () => getMemberProfile,
@@ -71,14 +70,6 @@
       method: "POST"
     });
   }
-  function adminPayOrder(orderId, key) {
-    return apiFetch(`/api/admin/orders/${encodeURIComponent(orderId)}/pay`, {
-      method: "POST",
-      headers: {
-        "x-admin-key": key
-      }
-    });
-  }
   var init_member_client = __esm({
     "src/assets/js/member-client.js"() {
       init_api_client();
@@ -100,7 +91,7 @@
     ...catalogData.products,
     ...catalogData.sampleSets.map((set) => ({
       ...set,
-      brand: "Scent Archive",
+      brand: "Scent Atoll",
       category: "sample",
       country: "Curated",
       stock: "\u73B0\u8D27",
@@ -198,7 +189,7 @@
   }
   function validatedItem(id) {
     const item = catalogItemById(id);
-    if (!item) throw new Error("\u5546\u54C1\u4E0D\u5B58\u5728\uFF0C\u65E0\u6CD5\u52A0\u5165\u8D2D\u7269\u8F66\u3002");
+    if (!item) throw new Error("\u5546\u54C1\u4E0D\u5B58\u5728\uFF0C\u65E0\u6CD5\u52A0\u5165\u610F\u5411\u6E05\u5355\u3002");
     if (!canPurchase(item)) throw new Error("\u5F53\u524D\u5546\u54C1\u6682\u4E0D\u53EF\u8D2D\u4E70\u3002");
     return item;
   }
@@ -272,9 +263,12 @@
     if (!entries.length) {
       return `
       <div class="cart-empty">
-        <h2>\u8D2D\u7269\u8F66\u662F\u7A7A\u7684</h2>
-        <p>\u53EF\u4EE5\u5148\u4ECE\u65B0\u54C1\u3001\u8BD5\u9999\u5957\u88C5\u6216\u9009\u9999\u95EE\u5377\u5F00\u59CB\u3002</p>
-        <a class="button button-primary" href="shop.html">\u63A2\u7D22\u9999\u6C34</a>
+        <h2>\u610F\u5411\u6E05\u5355\u662F\u7A7A\u7684</h2>
+        <p>\u53EF\u4EE5\u5148\u4ECE\u8BD5\u9999\u5957\u88C5\u964D\u4F4E\u76F2\u4E70\u98CE\u9669\uFF0C\u4E5F\u53EF\u4EE5\u76F4\u63A5\u8FDB\u5165\u9999\u6C34\u5217\u8868\u7B5B\u9009\u3002</p>
+        <div class="button-row">
+          <a class="button button-primary" href="samples.html">\u5148\u9009\u8BD5\u9999</a>
+          <a class="button button-secondary" href="shop.html">\u63A2\u7D22\u9999\u6C34</a>
+        </div>
       </div>
     `;
     }
@@ -285,7 +279,7 @@
           <div class="cart-row-image" ${imageStyle(item.image)}></div>
           <div>
             <h3>${item.name}</h3>
-            <p>${item.brand || "Scent Archive"} \xB7 ${formatPrice(item.price)}</p>
+            <p>${item.brand || "Scent Atoll"} \xB7 ${formatPrice(item.price)}</p>
             <div class="qty-control">
               <button type="button" data-cart-change="${item.id}" data-delta="-1" aria-label="\u51CF\u5C11\u6570\u91CF">-</button>
               <span>${qty}</span>
@@ -297,12 +291,12 @@
       `).join("")}
     </div>
     <div class="cart-total">
-      <span>\u5C0F\u8BA1</span>
+      <span>\u610F\u5411\u5C0F\u8BA1</span>
       <strong>${formatPrice(total)}</strong>
     </div>
-    <div class="member-quote" data-member-quote>\u767B\u5F55\u540E\u53EF\u67E5\u770B\u4F1A\u5458\u6298\u6263\u548C\u9884\u8BA1\u79EF\u5206\u3002</div>
-    <button class="button button-primary full" type="button" data-checkout>\u63D0\u4EA4\u8BA2\u5355</button>
-    ${compact ? `<a class="text-link" href="cart.html">\u67E5\u770B\u5B8C\u6574\u8D2D\u7269\u8F66</a>` : `<p class="service-note">\u8BA2\u5355\u63D0\u4EA4\u540E\u7531\u540E\u53F0\u786E\u8BA4\u652F\u4ED8\uFF0C\u5BA2\u6237\u786E\u8BA4\u6536\u8D27\u540E\u81EA\u52A8\u53D1\u653E\u79EF\u5206\u548C\u66F4\u65B0\u7B49\u7EA7\u3002</p>`}
+    <div class="member-quote" data-member-quote>\u8BD5\u8FD0\u8425\u671F\u95F4\u6682\u4E0D\u5F00\u653E\u5728\u7EBF\u652F\u4ED8\uFF0C\u6E05\u5355\u4EC5\u7528\u4E8E\u4EBA\u5DE5\u54A8\u8BE2\u4E0E\u9884\u7EA6\u8BD5\u9999\u3002</div>
+    <a class="button button-primary full" href="service.html">\u9884\u7EA6\u4EBA\u5DE5\u54A8\u8BE2</a>
+    ${compact ? `<a class="text-link" href="cart.html">\u67E5\u770B\u5B8C\u6574\u610F\u5411\u6E05\u5355</a>` : `<p class="service-note">\u63D0\u4EA4\u524D\u65E0\u9700\u652F\u4ED8\u3002\u987E\u95EE\u4F1A\u6839\u636E\u6E05\u5355\u534F\u52A9\u786E\u8BA4\u8BD5\u9999\u3001\u5E93\u5B58\u548C\u540E\u7EED\u8D2D\u4E70\u65B9\u5F0F\u3002</p>`}
   `;
   }
   function renderCartShell() {
@@ -317,8 +311,8 @@
     <aside class="cart-drawer" data-cart-drawer aria-hidden="true" aria-labelledby="cart-title">
       <div class="cart-panel">
         <div class="cart-header">
-          <h2 id="cart-title">\u8D2D\u7269\u8F66</h2>
-          <button class="icon-button" type="button" data-close-cart aria-label="\u5173\u95ED\u8D2D\u7269\u8F66">\xD7</button>
+          <h2 id="cart-title">\u610F\u5411\u6E05\u5355</h2>
+          <button class="icon-button" type="button" data-close-cart aria-label="\u5173\u95ED\u610F\u5411\u6E05\u5355">\xD7</button>
         </div>
         <div class="cart-content">${cartMarkup(true)}</div>
       </div>
@@ -348,67 +342,79 @@
     document.body.classList.remove("locked");
   }
 
-  // src/assets/js/checkout-client.js
+  // src/assets/js/admin-client.js
   init_api_client();
-  function normalizeCartItems(cartItems) {
-    return cartItems.map((entry) => ({
-      productId: entry.item.id,
-      quantity: entry.qty
-    }));
-  }
-  function quoteCheckout(cartItems) {
-    return apiFetch("/api/checkout/quote", {
+  function adminLogin(payload) {
+    return apiFetch("/api/admin/auth/login", {
       method: "POST",
-      body: {
-        items: normalizeCartItems(cartItems)
-      }
+      body: payload
     });
   }
-  function createOrder(cartItems) {
-    return apiFetch("/api/checkout/create-order", {
-      method: "POST",
-      body: {
-        items: normalizeCartItems(cartItems)
-      }
+  function adminLogout() {
+    return apiFetch("/api/admin/auth/logout", {
+      method: "POST"
     });
   }
-  function startPayment(orderId) {
-    return apiFetch("/api/checkout/start-payment", {
-      method: "POST",
-      body: {
-        orderId
-      }
+  function getCurrentAdmin() {
+    return apiFetch("/api/admin/auth/me");
+  }
+  function adminGetMembers() {
+    return apiFetch("/api/admin/members");
+  }
+  function adminGetOrders() {
+    return apiFetch("/api/admin/orders");
+  }
+  function adminGetPoints() {
+    return apiFetch("/api/admin/points");
+  }
+  function adminGetAuditLogs() {
+    return apiFetch("/api/admin/audit-logs");
+  }
+  function adminGetPointsMallItems() {
+    return apiFetch("/api/admin/points-mall/items");
+  }
+  function adminGetPointsRedemptions() {
+    return apiFetch("/api/admin/points-mall/redemptions");
+  }
+  function adminPayOrder(orderId) {
+    return apiFetch(`/api/admin/orders/${encodeURIComponent(orderId)}/pay`, {
+      method: "POST"
     });
   }
-
-  // src/assets/js/checkout.js
-  var checkoutAdapter = {
-    async startCheckout(cartItems) {
-      if (!cartItems.length) {
-        return {
-          status: "empty",
-          message: "\u8D2D\u7269\u8F66\u662F\u7A7A\u7684\uFF0C\u8BF7\u5148\u9009\u62E9\u5546\u54C1\u3002"
-        };
+  function adminCompleteOrder(orderId) {
+    return apiFetch(`/api/admin/orders/${encodeURIComponent(orderId)}/complete`, {
+      method: "POST"
+    });
+  }
+  function adminRefundOrder(orderId) {
+    return apiFetch(`/api/admin/orders/${encodeURIComponent(orderId)}/refund`, {
+      method: "POST"
+    });
+  }
+  function adminSetMallItemStatus(itemId, action) {
+    return apiFetch(`/api/admin/points-mall/items/${encodeURIComponent(itemId)}/${action}`, {
+      method: "POST"
+    });
+  }
+  function adminCreateMallItem(payload) {
+    return apiFetch("/api/admin/points-mall/items", {
+      method: "POST",
+      body: payload
+    });
+  }
+  function adminUpdateRedemptionStatus(redemptionId, payload) {
+    return apiFetch(`/api/admin/points-mall/redemptions/${encodeURIComponent(redemptionId)}/status`, {
+      method: "PATCH",
+      body: payload
+    });
+  }
+  function adminCancelRedemption(redemptionId) {
+    return apiFetch(`/api/admin/points-mall/redemptions/${encodeURIComponent(redemptionId)}/cancel`, {
+      method: "POST",
+      body: {
+        reason: "\u540E\u53F0\u53D6\u6D88\u5151\u6362"
       }
-      const session = await currentSession();
-      if (!session.user) {
-        return {
-          status: "login_required",
-          message: "\u8BF7\u5148\u767B\u5F55\u4F1A\u5458\u8D26\u53F7\uFF0C\u518D\u63D0\u4EA4\u8BA2\u5355\u83B7\u5F97\u79EF\u5206\u548C\u4F1A\u5458\u6298\u6263\u3002",
-          redirect: "login.html"
-        };
-      }
-      const { order } = await createOrder(cartItems);
-      const payment = await startPayment(order.id);
-      return {
-        status: payment.status,
-        order: payment.order,
-        message: payment.message
-      };
-    }
-  };
-  function startCheckout(cartItems) {
-    return checkoutAdapter.startCheckout(cartItems);
+    });
   }
 
   // src/assets/js/app.js
@@ -431,20 +437,6 @@
   function getPointsRedemptions() {
     return apiFetch("/api/points-mall/redemptions");
   }
-  function adminGetPointsMallItems(key) {
-    return apiFetch("/api/admin/points-mall/items", {
-      headers: {
-        "x-admin-key": key
-      }
-    });
-  }
-  function adminGetPointsRedemptions(key) {
-    return apiFetch("/api/admin/points-mall/redemptions", {
-      headers: {
-        "x-admin-key": key
-      }
-    });
-  }
 
   // src/assets/js/app.js
   if (hasCatalogData) {
@@ -465,57 +457,130 @@
       return new URLSearchParams(window.location.search);
     }, discountLabel = function(rate) {
       return Number(rate) >= 1 ? "\u65E0\u6298\u6263" : `${Math.round(Number(rate) * 100)} \u6298`;
+    }, sceneLabels = function(ids = []) {
+      return ids.map((id) => {
+        var _a;
+        return (_a = catalogData.scenes.find((scene) => scene.id === id)) == null ? void 0 : _a.label;
+      }).filter(Boolean);
+    }, sweetnessLabel = function(value) {
+      const labels = {
+        low: "\u4F4E\u751C",
+        medium: "\u5FAE\u751C",
+        high: "\u660E\u663E\u751C"
+      };
+      return labels[value] || "\u9700\u8BD5\u9999";
+    }, buyingCue = function(product) {
+      var _a;
+      const status = product.status || [];
+      const scenes = product.scenes || [];
+      if (((_a = product.caution) == null ? void 0 : _a.includes("\u5148\u8BD5")) || status.includes("Limited") || status.includes("\u6536\u85CF")) {
+        return "\u5EFA\u8BAE\u5148\u8BD5\u9999";
+      }
+      if (scenes.includes("daily") || status.includes("\u901A\u52E4")) {
+        return "\u65E5\u5E38\u4F4E\u98CE\u9669";
+      }
+      if (scenes.includes("gift")) {
+        return "\u9002\u5408\u9001\u793C";
+      }
+      return "\u8BFB\u5B8C\u63D0\u9192\u518D\u4E70";
+    }, statusFlags = function(product) {
+      return (product.status || []).slice(0, 2).map((item) => `<span>${item}</span>`).join("");
+    }, shortText = function(text = "", max = 58) {
+      return text.length > max ? `${text.slice(0, max)}...` : text;
+    }, entryUrl = function(prefix, id) {
+      return `${prefix}-${encodeURIComponent(id)}.html`;
+    }, productUrl = function(id) {
+      return entryUrl("product", id);
+    }, brandUrl = function(id) {
+      return entryUrl("brand", id);
+    }, articleUrl = function(id) {
+      return entryUrl("article", id);
+    }, setFormMessage = function(form, message, type = "") {
+      const node = $2("[data-form-message]", form);
+      if (!node) return;
+      node.textContent = message;
+      node.classList.toggle("is-error", type === "error");
+      node.classList.toggle("is-success", type === "success");
     }, productCard = function(product, options = {}) {
       const compact = options.compact ? " product-card-compact" : "";
       const favorite = state.favorites.has(product.id);
+      const scenes = sceneLabels(product.scenes).slice(0, 2).join(" / ");
+      const href = productUrl(product.id);
+      if (options.compact) {
+        return `
+        <article class="product-card${compact} product-card-minimal">
+          <a class="product-card-media" href="${href}" ${imageStyle(product.image)} aria-label="\u67E5\u770B ${product.name}"></a>
+          <div class="product-card-body">
+            <span class="product-kicker">${product.brand}</span>
+            <h3><a href="${href}">${product.name}</a></h3>
+            <p>${product.family}</p>
+            <div class="price-row">
+              <strong>${formatPrice(product.price)}</strong>
+              <span>${product.volume}</span>
+            </div>
+          </div>
+        </article>
+      `;
+      }
       return `
       <article class="product-card${compact}">
-        <a class="product-card-media" href="product.html?id=${product.id}" ${imageStyle(product.image)} aria-label="\u67E5\u770B ${product.name}"></a>
+        <a class="product-card-media" href="${href}" ${imageStyle(product.image)} aria-label="\u67E5\u770B ${product.name}"></a>
         <div class="product-card-body">
-          <div class="meta-line">
-            <span>${product.brand}</span>
-            <span>${product.stock}</span>
+          <div class="product-card-topline">
+            <div class="meta-line">
+              <span>${product.brand}</span>
+              <span>${product.stock}</span>
+            </div>
+            <div class="card-flags">${statusFlags(product)}</div>
           </div>
-          <h3><a href="product.html?id=${product.id}">${product.name}</a></h3>
+          <h3><a href="${href}">${product.name}</a></h3>
           <p>${product.family} \xB7 ${product.concentration}</p>
+          <div class="scent-brief" aria-label="\u6C14\u5473\u5224\u65AD">
+            <div><span>\u573A\u666F</span><strong>${scenes || product.bestFor}</strong></div>
+            <div><span>\u751C\u5EA6</span><strong>${sweetnessLabel(product.sweetness)}</strong></div>
+          </div>
+          <p class="card-note">${shortText(product.buyer || product.description)}</p>
+          <p class="risk-line"><span>\u8D2D\u4E70\u524D</span>${buyingCue(product)}</p>
           <div class="tag-row">${tagList(product.notes)}</div>
           <div class="price-row">
             <strong>${formatPrice(product.price)}</strong>
             <span>${product.volume}</span>
           </div>
           <div class="card-actions">
-            <button class="button button-secondary" type="button" data-favorite="${product.id}">
+            <button class="button button-secondary" type="button" data-favorite="${product.id}" aria-pressed="${favorite}">
               ${favorite ? "\u5DF2\u6536\u85CF" : "\u6536\u85CF"}
             </button>
-            <button class="button button-primary" type="button" data-add-cart="${product.id}">\u52A0\u5165\u8D2D\u7269\u8F66</button>
+            <button class="button button-primary" type="button" data-add-cart="${product.id}">\u52A0\u5165\u610F\u5411\u6E05\u5355</button>
           </div>
         </div>
       </article>
     `;
     }, brandCard = function(brand, compact = false) {
       const products = catalogData.products.filter((product) => product.brandId === brand.id);
+      const href = brandUrl(brand.id);
       return `
       <article class="brand-card ${compact ? "compact-card" : ""}">
-        <a class="brand-card-media" href="brand.html?id=${brand.id}" ${imageStyle(brand.hero)} aria-label="\u67E5\u770B ${brand.name}"></a>
+        <a class="brand-card-media" href="${href}" ${imageStyle(brand.hero)} aria-label="\u67E5\u770B ${brand.name}"></a>
         <div class="brand-card-body">
           <span class="eyebrow">${brand.country}</span>
-          <h3><a href="brand.html?id=${brand.id}">${brand.name}</a></h3>
+          <h3><a href="${href}">${brand.name}</a></h3>
           <p>${brand.intro}</p>
           <div class="tag-row">${tagList(brand.keywords)}</div>
           <strong>\u5165\u95E8\uFF1A${brand.starter}</strong>
-          <a class="text-link" href="brand.html?id=${brand.id}">${products.length} \u4EF6\u4F5C\u54C1</a>
+          <a class="text-link" href="${href}">${products.length} \u4EF6\u4F5C\u54C1</a>
         </div>
       </article>
     `;
     }, articleCard = function(article) {
+      const href = articleUrl(article.id);
       return `
       <article class="article-card">
-        <a class="article-media" href="article.html?id=${article.id}" ${imageStyle(article.image)} aria-label="\u9605\u8BFB ${article.title}"></a>
+        <a class="article-media" href="${href}" ${imageStyle(article.image)} aria-label="\u9605\u8BFB ${article.title}"></a>
         <div class="article-card-body">
           <span class="eyebrow">${article.category} \xB7 ${article.date}</span>
-          <h3><a href="article.html?id=${article.id}">${article.title}</a></h3>
+          <h3><a href="${href}">${article.title}</a></h3>
           <p>${article.excerpt}</p>
-          <a class="text-link" href="article.html?id=${article.id}">\u9605\u8BFB\u5168\u6587</a>
+          <a class="text-link" href="${href}">\u9605\u8BFB\u5168\u6587</a>
         </div>
       </article>
     `;
@@ -532,7 +597,7 @@
             <strong>${formatPrice(set.price)}</strong>
             <span>${set.bestFor}</span>
           </div>
-          <button class="button button-primary" type="button" data-add-cart="${set.id}">\u52A0\u5165\u8D2D\u7269\u8F66</button>
+          <button class="button button-primary" type="button" data-add-cart="${set.id}">\u52A0\u5165\u610F\u5411\u6E05\u5355</button>
         </div>
       </article>
     `;
@@ -545,6 +610,7 @@
         toggle.addEventListener("click", () => {
           const open = header.classList.toggle("nav-open");
           toggle.setAttribute("aria-expanded", String(open));
+          toggle.setAttribute("aria-label", open ? "\u5173\u95ED\u4E3B\u5BFC\u822A" : "\u6253\u5F00\u4E3B\u5BFC\u822A");
         });
       }
       if (nav) {
@@ -553,6 +619,7 @@
           link.addEventListener("click", () => {
             header == null ? void 0 : header.classList.remove("nav-open");
             toggle == null ? void 0 : toggle.setAttribute("aria-expanded", "false");
+            toggle == null ? void 0 : toggle.setAttribute("aria-label", "\u6253\u5F00\u4E3B\u5BFC\u822A");
           });
         });
       }
@@ -570,24 +637,6 @@
       if (newGrid) {
         const items = catalogData.products.filter((product) => product.status.includes("New") || product.status.includes("\u4E70\u624B\u63A8\u8350")).slice(0, 4);
         newGrid.innerHTML = items.map((product) => productCard(product, { compact: true })).join("");
-      }
-      const editGrid = $2("[data-home-edits]");
-      if (editGrid) {
-        editGrid.innerHTML = catalogData.edits.map((edit) => `
-        <a class="edit-card" href="${edit.href}" ${imageStyle(edit.image)}>
-          <span>${edit.eyebrow}</span>
-          <h3>${edit.title}</h3>
-          <p>${edit.intro}</p>
-        </a>
-      `).join("");
-      }
-      const brandGrid = $2("[data-home-brands]");
-      if (brandGrid) {
-        brandGrid.innerHTML = catalogData.brands.slice(0, 4).map((brand) => brandCard(brand, true)).join("");
-      }
-      const journalGrid = $2("[data-home-articles]");
-      if (journalGrid) {
-        journalGrid.innerHTML = catalogData.articles.slice(0, 3).map(articleCard).join("");
       }
     }, initShop = function() {
       const grid = $2("[data-shop-grid]");
@@ -649,17 +698,26 @@
           return [product.brand, product.name, product.family, product.country, product.description, ...product.notes, ...product.status].join(" ").toLowerCase().includes(q);
         });
         if (result) result.textContent = `${filtered.length} \u4EF6\u4F5C\u54C1`;
-        grid.innerHTML = filtered.length ? filtered.map((product) => productCard(product)).join("") : `<div class="empty-state">\u5F53\u524D\u7B5B\u9009\u6CA1\u6709\u5339\u914D\u4F5C\u54C1\u3002\u53EF\u4EE5\u6E05\u9664\u7B5B\u9009\uFF0C\u6216\u5148\u4ECE\u8BD5\u9999\u5957\u88C5\u5F00\u59CB\u3002</div>`;
+        grid.innerHTML = filtered.length ? filtered.map((product) => productCard(product)).join("") : `
+          <div class="empty-state">
+            <h2>\u5F53\u524D\u7B5B\u9009\u6CA1\u6709\u5339\u914D\u4F5C\u54C1</h2>
+            <p>\u53EF\u4EE5\u6E05\u9664\u7B5B\u9009\uFF0C\u6216\u5148\u4ECE\u8BD5\u9999\u5957\u88C5\u5F00\u59CB\uFF0C\u964D\u4F4E\u7B2C\u4E00\u6B21\u9009\u62E9\u7684\u98CE\u9669\u3002</p>
+            <div class="button-row">
+              <button class="button button-secondary" type="reset" form="${(form == null ? void 0 : form.id) || ""}">\u6E05\u9664\u7B5B\u9009</button>
+              <a class="button button-primary" href="samples.html">\u67E5\u770B\u8BD5\u9999\u5957\u88C5</a>
+            </div>
+          </div>
+        `;
       }
       render();
     }, renderProductPage = function() {
       const mount = $2("[data-product-page]");
       if (!mount) return;
-      const id = params().get("id") || catalogData.products[0].id;
+      const id = mount.dataset.entryId || params().get("id") || catalogData.products[0].id;
       const product = productById(id) || catalogData.products[0];
       const brand = brandById(product.brandId);
       const related = catalogData.products.filter((item) => item.id !== product.id && (item.brandId === product.brandId || item.notes.some((note) => product.notes.includes(note)))).slice(0, 3);
-      document.title = `${product.name} | \u6C14\u5473\u6863\u6848`;
+      document.title = `${product.name} | \u99A5\u5C7F`;
       mount.innerHTML = `
       <nav class="breadcrumb" aria-label="\u9762\u5305\u5C51">
         <a href="index.html">\u9996\u9875</a>
@@ -678,15 +736,35 @@
           <h1>${product.name}</h1>
           <p>${product.description}</p>
           <div class="tag-row">${tagList(product.notes)}</div>
+          <div class="purchase-guidance" aria-label="\u8D2D\u4E70\u524D\u5224\u65AD">
+            <div>
+              <span>\u4E70\u624B\u5224\u65AD</span>
+              <p>${product.buyer}</p>
+            </div>
+            <div>
+              <span>\u9002\u5408\u573A\u666F</span>
+              <strong>${product.bestFor}</strong>
+            </div>
+            <div>
+              <span>\u76F2\u4E70\u63D0\u9192</span>
+              <p>${product.caution}</p>
+            </div>
+          </div>
           <div class="purchase-box">
             <div><span>\u4EF7\u683C</span><strong>${formatPrice(product.price)}</strong></div>
             <div><span>\u5BB9\u91CF</span><strong>${product.volume}</strong></div>
             <div><span>\u6D53\u5EA6</span><strong>${product.concentration}</strong></div>
             <div><span>\u5E93\u5B58</span><strong>${product.stock}</strong></div>
           </div>
+          <div class="scent-brief product-detail-brief" aria-label="\u9999\u6C34\u6458\u8981">
+            <div><span>\u9999\u8C03\u5BB6\u65CF</span><strong>${product.family}</strong></div>
+            <div><span>\u751C\u5EA6</span><strong>${sweetnessLabel(product.sweetness)}</strong></div>
+            <div><span>\u8D2D\u4E70\u5EFA\u8BAE</span><strong>${buyingCue(product)}</strong></div>
+          </div>
           <div class="purchase-actions">
-            <button class="button button-primary" type="button" data-add-cart="${product.id}">\u52A0\u5165\u8D2D\u7269\u8F66</button>
-            <button class="button button-secondary" type="button" data-favorite="${product.id}">${state.favorites.has(product.id) ? "\u5DF2\u6536\u85CF" : "\u6536\u85CF"}</button>
+            <button class="button button-primary" type="button" data-add-cart="${product.id}">\u54A8\u8BE2\u8FD9\u652F\u9999</button>
+            <a class="button button-secondary" href="samples.html">\u4E0D\u786E\u5B9A\uFF0C\u5148\u8BD5\u9999</a>
+            <button class="button button-secondary" type="button" data-favorite="${product.id}" aria-pressed="${state.favorites.has(product.id)}">${state.favorites.has(product.id) ? "\u5DF2\u6536\u85CF" : "\u6536\u85CF"}</button>
           </div>
         </div>
       </section>
@@ -707,11 +785,15 @@
           <p>${product.buyer}</p>
           <p><strong>\u9002\u5408\uFF1A</strong>${product.bestFor}</p>
           <p><strong>\u63D0\u9192\uFF1A</strong>${product.caution}</p>
+          <div class="detail-cta">
+            <span class="status-badge">Sample first</span>
+            <a class="text-link" href="samples.html">\u62C5\u5FC3\u76F2\u4E70\uFF1F\u5148\u4ECE\u8BD5\u9999\u5957\u88C5\u5F00\u59CB</a>
+          </div>
         </article>
         <article>
           <h2>\u89C4\u683C\u4E0E\u670D\u52A1</h2>
-          <p>\u73B0\u8D27\u5546\u54C1 48 \u5C0F\u65F6\u5185\u53D1\u51FA\uFF0C\u9ED8\u8BA4\u987A\u4E30\u3002\u6B63\u88C5\u672A\u62C6\u5C01\u53EF\u6309\u653F\u7B56\u5904\u7406\uFF0C\u8BD5\u9999\u548C\u5DF2\u62C6\u5C01\u5546\u54C1\u4E0D\u652F\u6301\u65E0\u7406\u7531\u9000\u6362\u3002</p>
-          <a class="text-link" href="service.html">\u67E5\u770B\u914D\u9001\u4E0E\u9000\u6362\u653F\u7B56</a>
+          <p>\u5E93\u5B58\u3001\u9884\u8BA1\u53D1\u51FA\u65F6\u95F4\u3001\u914D\u9001\u65B9\u5F0F\u548C\u9000\u6362\u6761\u4EF6\u4F1A\u5728\u8D2D\u4E70\u524D\u7531\u5BA2\u670D\u786E\u8BA4\u3002\u8BD5\u9999\u3001\u62C6\u5C01\u5546\u54C1\u548C\u7279\u6B8A\u7EC4\u5408\u7684\u552E\u540E\u89C4\u5219\u4EE5\u5BA2\u670D\u8BF4\u660E\u4E3A\u51C6\u3002</p>
+          <a class="text-link" href="service.html">\u67E5\u770B\u5BA2\u670D\u3001\u914D\u9001\u4E0E\u9000\u6362\u8BF4\u660E</a>
         </article>
       </section>
       <section class="section-tight">
@@ -720,7 +802,7 @@
             <p class="eyebrow">Related</p>
             <h2>\u76F8\u5173\u63A8\u8350</h2>
           </div>
-          <a class="text-link" href="${brand ? `brand.html?id=${brand.id}` : "brands.html"}">\u67E5\u770B\u54C1\u724C</a>
+          <a class="text-link" href="${brand ? brandUrl(brand.id) : "brands.html"}">\u67E5\u770B\u54C1\u724C</a>
         </div>
         <div class="product-grid">${related.map((item) => productCard(item, { compact: true })).join("")}</div>
       </section>
@@ -730,10 +812,10 @@
       if (grid) grid.innerHTML = catalogData.brands.map((brand2) => brandCard(brand2)).join("");
       const mount = $2("[data-brand-page]");
       if (!mount) return;
-      const id = params().get("id") || catalogData.brands[0].id;
+      const id = mount.dataset.entryId || params().get("id") || catalogData.brands[0].id;
       const brand = brandById(id) || catalogData.brands[0];
       const products = catalogData.products.filter((product) => product.brandId === brand.id);
-      document.title = `${brand.name} | \u6C14\u5473\u6863\u6848`;
+      document.title = `${brand.name} | \u99A5\u5C7F`;
       mount.innerHTML = `
       <section class="split-hero compact-hero">
         <div class="split-copy">
@@ -755,6 +837,11 @@
           <p><strong>\u521B\u529E\u4EBA / \u8C03\u9999\uFF1A</strong>${brand.founder}</p>
           <p><strong>\u4E70\u624B\u5165\u95E8\u6B3E\uFF1A</strong>${brand.starter}</p>
         </article>
+        <article>
+          <h2>\u5165\u95E8\u8DEF\u7EBF</h2>
+          <p>\u7B2C\u4E00\u6B21\u63A5\u89E6 ${brand.name}\uFF0C\u5EFA\u8BAE\u5148\u770B\u5173\u952E\u8BCD\u662F\u5426\u8D34\u5408\u4F60\u7684\u573A\u666F\uFF0C\u518D\u4ECE\u5165\u95E8\u6B3E\u6216\u540C\u54C1\u724C\u8BD5\u9999\u5F00\u59CB\u3002</p>
+          <a class="text-link" href="shop.html?brand=${brand.id}">\u67E5\u770B\u53EF\u8D2D\u4E70\u4F5C\u54C1</a>
+        </article>
       </section>
       <section class="section-tight">
         <div class="section-heading row-heading">
@@ -770,48 +857,15 @@
     }, renderSamples = function() {
       const grid = $2("[data-sample-grid]");
       if (grid) grid.innerHTML = catalogData.sampleSets.map(sampleCard).join("");
-    }, renderGuide = function() {
-      const noteGrid = $2("[data-guide-notes]");
-      if (noteGrid) {
-        noteGrid.innerHTML = catalogData.notes.slice(0, 8).map((note) => `<a class="guide-tile" href="shop.html?note=${encodeURIComponent(note)}">${note}</a>`).join("");
-      }
-      const sceneGrid = $2("[data-guide-scenes]");
-      if (sceneGrid) {
-        sceneGrid.innerHTML = catalogData.scenes.map((scene) => `<a class="guide-tile" href="shop.html?scene=${scene.id}">${scene.label}</a>`).join("");
-      }
-      const form = $2("[data-quiz]");
-      const result = $2("[data-quiz-result]");
-      if (!form || !result) return;
-      form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const formData = new FormData(form);
-        const mood = formData.get("mood");
-        const scene = formData.get("scene");
-        const sweet = formData.get("sweet");
-        const scored = catalogData.products.filter((product) => product.category === "fragrance").map((product) => {
-          let score = 0;
-          if (product.mood.includes(mood)) score += 3;
-          if (product.scenes.includes(scene)) score += 2;
-          if (product.sweetness === sweet) score += 2;
-          if (product.status.includes("\u4E70\u624B\u63A8\u8350")) score += 1;
-          return { product, score };
-        }).sort((a, b) => b.score - a.score).slice(0, 3).map(({ product }) => product);
-        result.innerHTML = `
-        <h2>\u63A8\u8350\u7ED3\u679C</h2>
-        <p>\u5148\u8BD5\u8FD9\u4E09\u6B3E\uFF0C\u518D\u51B3\u5B9A\u662F\u5426\u4E70\u6B63\u88C5\u3002\u4E5F\u53EF\u4EE5\u76F4\u63A5\u9009\u62E9\u65B0\u5BA2\u53D1\u73B0\u8BD5\u9999\u5957\u88C5\u3002</p>
-        <div class="product-grid compact-grid">${scored.map((product) => productCard(product, { compact: true })).join("")}</div>
-        <a class="button button-secondary" href="samples.html">\u67E5\u770B\u8BD5\u9999\u5957\u88C5</a>
-      `;
-      });
     }, renderJournal = function() {
       const grid = $2("[data-journal-grid]");
       if (grid) grid.innerHTML = catalogData.articles.map(articleCard).join("");
       const mount = $2("[data-article-page]");
       if (!mount) return;
-      const id = params().get("id") || catalogData.articles[0].id;
+      const id = mount.dataset.entryId || params().get("id") || catalogData.articles[0].id;
       const article = articleById(id) || catalogData.articles[0];
       const relatedProducts = article.relatedProducts.map(productById).filter(Boolean);
-      document.title = `${article.title} | \u6C14\u5473\u6863\u6848`;
+      document.title = `${article.title} | \u99A5\u5C7F`;
       mount.innerHTML = `
       <article class="article-detail">
         <nav class="breadcrumb" aria-label="\u9762\u5305\u5C51"><a href="journal.html">Journal</a><span>/</span><span>${article.category}</span></nav>
@@ -819,6 +873,10 @@
         <h1>${article.title}</h1>
         <div class="article-hero-image" ${imageStyle(article.image)}></div>
         ${article.body.map((paragraph) => `<p>${paragraph}</p>`).join("")}
+        <div class="article-shop-note">
+          <span class="status-badge">Shop the story</span>
+          <p>\u8BFB\u5B8C\u540E\u5148\u770B\u6587\u4E2D\u63A8\u8350\uFF0C\u518D\u6309\u201C\u9002\u5408\u573A\u666F\u201D\u548C\u201C\u76F2\u4E70\u63D0\u9192\u201D\u51B3\u5B9A\u662F\u5426\u8FDB\u5165\u8BD5\u9999\u6216\u6B63\u88C5\u54A8\u8BE2\u3002</p>
+        </div>
       </article>
       <section class="section-tight">
         <div class="section-heading">
@@ -853,15 +911,22 @@
         loginForm.addEventListener("submit", async (event) => {
           event.preventDefault();
           const formData = new FormData(loginForm);
+          const submitButton = loginForm.querySelector("button[type='submit']");
+          setFormMessage(loginForm, "\u6B63\u5728\u767B\u5F55...");
+          if (submitButton) submitButton.disabled = true;
           try {
             await loginMember({
               account: formData.get("account"),
               password: formData.get("password")
             });
+            setFormMessage(loginForm, "\u767B\u5F55\u6210\u529F\uFF0C\u6B63\u5728\u8FDB\u5165\u4F1A\u5458\u4E2D\u5FC3\u3002", "success");
             showToast("\u767B\u5F55\u6210\u529F\u3002");
             window.location.href = "account.html";
           } catch (error) {
+            setFormMessage(loginForm, error.message, "error");
             showToast(error.message);
+          } finally {
+            if (submitButton) submitButton.disabled = false;
           }
         });
       }
@@ -870,6 +935,9 @@
         registerForm.addEventListener("submit", async (event) => {
           event.preventDefault();
           const formData = new FormData(registerForm);
+          const submitButton = registerForm.querySelector("button[type='submit']");
+          setFormMessage(registerForm, "\u6B63\u5728\u521B\u5EFA\u4F1A\u5458\u8D26\u53F7...");
+          if (submitButton) submitButton.disabled = true;
           try {
             await registerMember({
               name: formData.get("name"),
@@ -877,10 +945,14 @@
               phone: formData.get("phone"),
               password: formData.get("password")
             });
+            setFormMessage(registerForm, "\u6CE8\u518C\u6210\u529F\uFF0C\u6B63\u5728\u8FDB\u5165\u4F1A\u5458\u4E2D\u5FC3\u3002", "success");
             showToast("\u6CE8\u518C\u6210\u529F\u3002");
             window.location.href = "account.html";
           } catch (error) {
+            setFormMessage(registerForm, error.message, "error");
             showToast(error.message);
+          } finally {
+            if (submitButton) submitButton.disabled = false;
           }
         });
       }
@@ -941,13 +1013,20 @@
         update_points_redemption_status: "\u66F4\u65B0\u5151\u6362\u8BA2\u5355",
         cancel_points_redemption: "\u53D6\u6D88\u5151\u6362\u8BA2\u5355"
       }[action] || action;
+    }, refreshMemberQuote = function() {
+      const mounts = $all2("[data-member-quote]");
+      if (!mounts.length) return;
+      mounts.forEach((mount) => {
+        mount.textContent = "\u8BD5\u8FD0\u8425\u671F\u95F4\u6682\u4E0D\u5F00\u653E\u5728\u7EBF\u652F\u4ED8\uFF0C\u6E05\u5355\u4EC5\u7528\u4E8E\u4EBA\u5DE5\u54A8\u8BE2\u4E0E\u9884\u7EA6\u8BD5\u9999\u3002";
+      });
     }, addToCart = function(id) {
       try {
         const item = cartStore.addItem(id);
         renderCartShell();
         renderCartPage();
         refreshMemberQuote();
-        showToast(`${item.name} \u5DF2\u52A0\u5165\u8D2D\u7269\u8F66`);
+        openCart();
+        showToast(`${item.name} \u5DF2\u52A0\u5165\u610F\u5411\u6E05\u5355`);
       } catch (error) {
         showToast(error.message);
       }
@@ -976,6 +1055,7 @@
       writeStore("sa_favorites", Array.from(state.favorites));
       $all2(`[data-favorite="${CSS.escape(id)}"]`).forEach((button) => {
         button.textContent = state.favorites.has(id) ? "\u5DF2\u6536\u85CF" : "\u6536\u85CF";
+        button.setAttribute("aria-pressed", String(state.favorites.has(id)));
       });
     }, showToast = function(message) {
       let toast = $2(".toast");
@@ -996,7 +1076,6 @@
         const open = event.target.closest("[data-open-cart]");
         const close = event.target.closest("[data-close-cart]");
         const change = event.target.closest("[data-cart-change]");
-        const checkout = event.target.closest("[data-checkout]");
         const service = event.target.closest("[data-service-action]");
         const logout = event.target.closest("[data-logout]");
         const adminPay = event.target.closest("[data-admin-pay]");
@@ -1004,6 +1083,7 @@
         const adminComplete = event.target.closest("[data-admin-complete]");
         const confirmReceipt = event.target.closest("[data-confirm-receipt]");
         const adminExport = event.target.closest("[data-admin-export]");
+        const adminLogoutButton = event.target.closest("[data-admin-logout]");
         const adminMallActivate = event.target.closest("[data-admin-mall-activate]");
         const adminMallDeactivate = event.target.closest("[data-admin-mall-deactivate]");
         const adminRedemptionStatus = event.target.closest("[data-admin-redemption-status]");
@@ -1013,25 +1093,6 @@
         if (open) openCart();
         if (close) closeCart();
         if (change) changeCart(change.dataset.cartChange, Number(change.dataset.delta));
-        if (checkout) {
-          try {
-            const result = await startCheckout(cartStore.getItems());
-            showToast(result.message);
-            if (result.redirect) {
-              setTimeout(() => {
-                window.location.href = result.redirect;
-              }, 700);
-            }
-            if (result.order) {
-              cartStore.clear();
-              renderCartShell();
-              renderCartPage();
-              refreshMemberQuote();
-            }
-          } catch (error) {
-            showToast(error.message);
-          }
-        }
         if (service) showToast(service.dataset.serviceAction);
         if (logout) {
           try {
@@ -1044,13 +1105,12 @@
           }
         }
         if (adminPay) {
-          const key = window.prompt("\u8F93\u5165\u540E\u53F0\u786E\u8BA4\u652F\u4ED8\u5BC6\u94A5", "dev-admin");
-          if (!key) return;
           try {
-            await adminPayOrder(adminPay.dataset.adminPay, key);
+            await adminPayOrder(adminPay.dataset.adminPay);
             resetSessionCache();
             showToast("\u8BA2\u5355\u5DF2\u786E\u8BA4\u652F\u4ED8\uFF0C\u7B49\u5F85\u5BA2\u6237\u786E\u8BA4\u6536\u8D27\u540E\u7ED3\u7B97\u79EF\u5206\u548C\u7B49\u7EA7\u3002");
             await renderOrdersPage();
+            await renderAdminPage();
             await initAuthHeader();
           } catch (error) {
             showToast(error.message);
@@ -1068,15 +1128,8 @@
           }
         }
         if (adminComplete) {
-          const key = window.prompt("\u8F93\u5165\u540E\u53F0\u786E\u8BA4\u6536\u8D27\u5BC6\u94A5", window.localStorage.getItem("sa_admin_key") || "dev-admin");
-          if (!key) return;
           try {
-            await apiFetch(`/api/admin/orders/${encodeURIComponent(adminComplete.dataset.adminComplete)}/complete`, {
-              method: "POST",
-              headers: {
-                "x-admin-key": key
-              }
-            });
+            await adminCompleteOrder(adminComplete.dataset.adminComplete);
             resetSessionCache();
             showToast("\u8BA2\u5355\u5DF2\u786E\u8BA4\u6536\u8D27\uFF0C\u79EF\u5206\u548C\u7B49\u7EA7\u5DF2\u7ED3\u7B97\u3002");
             await renderAdminPage();
@@ -1087,15 +1140,8 @@
           }
         }
         if (adminRefund) {
-          const key = window.prompt("\u8F93\u5165\u540E\u53F0\u9000\u6B3E\u5BC6\u94A5", window.localStorage.getItem("sa_admin_key") || "dev-admin");
-          if (!key) return;
           try {
-            await apiFetch(`/api/admin/orders/${encodeURIComponent(adminRefund.dataset.adminRefund)}/refund`, {
-              method: "POST",
-              headers: {
-                "x-admin-key": key
-              }
-            });
+            await adminRefundOrder(adminRefund.dataset.adminRefund);
             resetSessionCache();
             showToast("\u8BA2\u5355\u5DF2\u9000\u6B3E\uFF0C\u79EF\u5206\u548C\u7D2F\u8BA1\u6D88\u8D39\u5DF2\u6263\u56DE\u3002");
             await renderAdminPage();
@@ -1106,17 +1152,10 @@
           }
         }
         if (adminMallActivate || adminMallDeactivate) {
-          const key = window.localStorage.getItem("sa_admin_key") || window.prompt("\u8F93\u5165\u540E\u53F0\u5BC6\u94A5", "dev-admin");
-          if (!key) return;
           const node = adminMallActivate || adminMallDeactivate;
           const action = adminMallActivate ? "activate" : "deactivate";
           try {
-            await apiFetch(`/api/admin/points-mall/items/${encodeURIComponent(node.dataset.adminMallActivate || node.dataset.adminMallDeactivate)}/${action}`, {
-              method: "POST",
-              headers: {
-                "x-admin-key": key
-              }
-            });
+            await adminSetMallItemStatus(node.dataset.adminMallActivate || node.dataset.adminMallDeactivate, action);
             showToast(action === "activate" ? "\u79EF\u5206\u5546\u54C1\u5DF2\u4E0A\u67B6\u3002" : "\u79EF\u5206\u5546\u54C1\u5DF2\u4E0B\u67B6\u3002");
             await renderAdminPage();
           } catch (error) {
@@ -1124,19 +1163,11 @@
           }
         }
         if (adminRedemptionStatus) {
-          const key = window.localStorage.getItem("sa_admin_key") || window.prompt("\u8F93\u5165\u540E\u53F0\u5BC6\u94A5", "dev-admin");
-          if (!key) return;
           const trackingNo = adminRedemptionStatus.dataset.status === "shipped" ? window.prompt("\u7269\u6D41\u5355\u53F7\uFF0C\u53EF\u7559\u7A7A", "") : "";
           try {
-            await apiFetch(`/api/admin/points-mall/redemptions/${encodeURIComponent(adminRedemptionStatus.dataset.adminRedemptionStatus)}/status`, {
-              method: "PATCH",
-              headers: {
-                "x-admin-key": key
-              },
-              body: {
-                status: adminRedemptionStatus.dataset.status,
-                trackingNo
-              }
+            await adminUpdateRedemptionStatus(adminRedemptionStatus.dataset.adminRedemptionStatus, {
+              status: adminRedemptionStatus.dataset.status,
+              trackingNo
             });
             showToast("\u5151\u6362\u8BA2\u5355\u72B6\u6001\u5DF2\u66F4\u65B0\u3002");
             await renderAdminPage();
@@ -1145,18 +1176,8 @@
           }
         }
         if (adminRedemptionCancel) {
-          const key = window.localStorage.getItem("sa_admin_key") || window.prompt("\u8F93\u5165\u540E\u53F0\u5BC6\u94A5", "dev-admin");
-          if (!key) return;
           try {
-            await apiFetch(`/api/admin/points-mall/redemptions/${encodeURIComponent(adminRedemptionCancel.dataset.adminRedemptionCancel)}/cancel`, {
-              method: "POST",
-              headers: {
-                "x-admin-key": key
-              },
-              body: {
-                reason: "\u540E\u53F0\u53D6\u6D88\u5151\u6362"
-              }
-            });
+            await adminCancelRedemption(adminRedemptionCancel.dataset.adminRedemptionCancel);
             resetSessionCache();
             showToast("\u5151\u6362\u8BA2\u5355\u5DF2\u53D6\u6D88\uFF0C\u79EF\u5206\u548C\u5E93\u5B58\u5DF2\u8FD4\u8FD8\u3002");
             await renderAdminPage();
@@ -1165,14 +1186,8 @@
           }
         }
         if (adminExport) {
-          const key = window.localStorage.getItem("sa_admin_key") || window.prompt("\u8F93\u5165\u540E\u53F0\u5BFC\u51FA\u5BC6\u94A5", "dev-admin");
-          if (!key) return;
           try {
-            const response = await fetch("/api/admin/members/export.csv", {
-              headers: {
-                "x-admin-key": key
-              }
-            });
+            const response = await fetch("/api/admin/members/export.csv");
             if (!response.ok) {
               const payload = await response.json().catch(() => ({}));
               throw new Error(payload.error || "\u4F1A\u5458\u540D\u5355\u5BFC\u51FA\u5931\u8D25\u3002");
@@ -1181,12 +1196,21 @@
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = url;
-            link.download = `scent-archive-members-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.csv`;
+            link.download = `scent-atoll-members-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.csv`;
             document.body.appendChild(link);
             link.click();
             link.remove();
             URL.revokeObjectURL(url);
             showToast("\u4F1A\u5458\u540D\u5355\u5DF2\u5BFC\u51FA\u3002");
+          } catch (error) {
+            showToast(error.message);
+          }
+        }
+        if (adminLogoutButton) {
+          try {
+            await adminLogout();
+            showToast("\u5DF2\u9000\u51FA\u540E\u53F0\u3002");
+            await renderAdminPage();
           } catch (error) {
             showToast(error.message);
           }
@@ -1208,7 +1232,6 @@
     renderProductPage();
     renderBrands();
     renderSamples();
-    renderGuide();
     renderJournal();
     renderCartPage();
     refreshMemberQuote();
@@ -1307,7 +1330,7 @@
                 <p>${item.note || ""}${item.expiresAt ? ` \xB7 \u6709\u6548\u81F3 ${new Date(item.expiresAt).toLocaleDateString("zh-CN")}` : ""}</p>
               </div>
               <strong>${item.points > 0 ? "+" : ""}${item.points}</strong>
-              <span>${new Date(item.createdAt).toLocaleString("zh-CN")}</span>
+              <span class="status-badge">${new Date(item.createdAt).toLocaleDateString("zh-CN")}</span>
             </article>
           `).join("") : `<div class="empty-state">\u6682\u65E0\u79EF\u5206\u6D41\u6C34\u3002</div>`}
         </div>
@@ -1432,7 +1455,7 @@
                 <p>${order.trackingNo ? `\u7269\u6D41\u5355\u53F7\uFF1A${order.trackingNo}` : "\u7B49\u5F85\u540E\u53F0\u5904\u7406"}</p>
               </div>
               <strong>${order.totalPoints} \u79EF\u5206</strong>
-              <span>${redemptionStatusLabel(order.status)}</span>
+              <span class="status-badge">${redemptionStatusLabel(order.status)}</span>
             </article>
           `).join("") : `<div class="empty-state">\u6682\u65E0\u5151\u6362\u8BB0\u5F55\u3002</div>`}
         </div>
@@ -1457,8 +1480,7 @@
                 <p>\u4F1A\u5458\u6298\u6263\uFF1A${moneyText(order.memberDiscountAmountYuan)} \xB7 ${orderPointsText(order)}</p>
               </div>
               <strong>${moneyText(order.paidAmountYuan)}</strong>
-              <span>${orderStatusLabel(order.status)}</span>
-              ${order.status === "pending_payment" ? `<button class="button button-secondary" type="button" data-admin-pay="${order.id}">\u5F00\u53D1\u786E\u8BA4\u652F\u4ED8</button>` : ""}
+              <span class="status-badge">${orderStatusLabel(order.status)}</span>
               ${["paid", "shipped"].includes(order.status) ? `<button class="button button-secondary" type="button" data-confirm-receipt="${order.id}">\u786E\u8BA4\u6536\u8D27</button>` : ""}
             </article>
           `).join("") : `<div class="empty-state">\u6682\u65E0\u8BA2\u5355\u3002</div>`}
@@ -1504,38 +1526,51 @@
       var _a, _b;
       const mount = $2("[data-admin-page]");
       if (!mount) return;
-      const key = window.localStorage.getItem("sa_admin_key") || (["localhost", "127.0.0.1"].includes(window.location.hostname) ? "dev-admin" : "");
-      if (!key) {
+      let session;
+      try {
+        session = await getCurrentAdmin();
+      } catch (e) {
         mount.innerHTML = `
-        <form class="account-form" data-admin-key-form>
-          <label class="field-label">\u540E\u53F0\u5BC6\u94A5<input name="key" required></label>
+        <form class="account-form" data-admin-login-form>
+          <label class="field-label">\u540E\u53F0\u90AE\u7BB1<input name="email" type="email" autocomplete="username" required></label>
+          <label class="field-label">\u540E\u53F0\u5BC6\u7801<input name="password" type="password" autocomplete="current-password" required></label>
           <button class="button button-primary" type="submit">\u8FDB\u5165\u540E\u53F0</button>
         </form>
       `;
-        (_a = $2("[data-admin-key-form]", mount)) == null ? void 0 : _a.addEventListener("submit", (event) => {
+        (_a = $2("[data-admin-login-form]", mount)) == null ? void 0 : _a.addEventListener("submit", async (event) => {
           event.preventDefault();
           const formData = new FormData(event.currentTarget);
-          window.localStorage.setItem("sa_admin_key", formData.get("key"));
-          renderAdminPage();
+          try {
+            await adminLogin({
+              email: formData.get("email"),
+              password: formData.get("password")
+            });
+            showToast("\u5DF2\u8FDB\u5165\u540E\u53F0\u3002");
+            await renderAdminPage();
+          } catch (error) {
+            showToast(error.message);
+          }
         });
         return;
       }
-      window.localStorage.setItem("sa_admin_key", key);
       try {
         const [members, orders, points, logs, mallItems, mallRedemptions] = await Promise.all([
-          apiFetch("/api/admin/members", { headers: { "x-admin-key": key } }),
-          apiFetch("/api/admin/orders", { headers: { "x-admin-key": key } }),
-          apiFetch("/api/admin/points", { headers: { "x-admin-key": key } }),
-          apiFetch("/api/admin/audit-logs", { headers: { "x-admin-key": key } }),
-          adminGetPointsMallItems(key),
-          adminGetPointsRedemptions(key)
+          adminGetMembers(),
+          adminGetOrders(),
+          adminGetPoints(),
+          adminGetAuditLogs(),
+          adminGetPointsMallItems(),
+          adminGetPointsRedemptions()
         ]);
         mount.innerHTML = `
         <div class="section-heading">
           <p class="eyebrow">Admin</p>
           <h2>\u4F1A\u5458\u4E0E\u8BA2\u5355\u7BA1\u7406</h2>
-          <p>\u672C\u9875\u9762\u7528\u4E8E\u672C\u5730\u5F00\u53D1\u786E\u8BA4\u652F\u4ED8\u3001\u786E\u8BA4\u6536\u8D27\u548C\u9000\u6B3E\uFF0C\u4E0A\u7EBF\u524D\u5E94\u66FF\u6362\u4E3A\u6B63\u5F0F\u540E\u53F0\u8BA4\u8BC1\u3002</p>
-          <button class="button button-secondary" type="button" data-admin-export>\u5BFC\u51FA\u4F1A\u5458\u540D\u5355</button>
+          <p>${session.admin.name || session.admin.email} \xB7 ${session.admin.role}</p>
+          <div class="button-row">
+            <button class="button button-secondary" type="button" data-admin-export>\u5BFC\u51FA\u4F1A\u5458\u540D\u5355</button>
+            <button class="button button-secondary" type="button" data-admin-logout>\u9000\u51FA\u540E\u53F0</button>
+          </div>
         </div>
         <div class="admin-grid">
           <section>
@@ -1653,18 +1688,12 @@
           const form = event.currentTarget;
           const formData = new FormData(form);
           try {
-            await apiFetch("/api/admin/points-mall/items", {
-              method: "POST",
-              headers: {
-                "x-admin-key": key
-              },
-              body: {
-                name: formData.get("name"),
-                productId: formData.get("productId"),
-                pointsPrice: Number(formData.get("pointsPrice")),
-                stockQuantity: Number(formData.get("stockQuantity")),
-                status: "active"
-              }
+            await adminCreateMallItem({
+              name: formData.get("name"),
+              productId: formData.get("productId"),
+              pointsPrice: Number(formData.get("pointsPrice")),
+              stockQuantity: Number(formData.get("stockQuantity")),
+              status: "active"
             });
             showToast("\u79EF\u5206\u5546\u54C1\u5DF2\u65B0\u589E\u3002");
             await renderAdminPage();
@@ -1674,24 +1703,6 @@
         });
       } catch (error) {
         mount.innerHTML = `<div class="empty-state">${error.message}</div>`;
-      }
-    }
-    async function refreshMemberQuote() {
-      const entries = cartStore.getItems();
-      const mounts = $all2("[data-member-quote]");
-      if (!mounts.length || !entries.length) return;
-      try {
-        const quote = await quoteCheckout(entries);
-        mounts.forEach((mount) => {
-          mount.innerHTML = `
-          <strong>${quote.tier.name}</strong>
-          <span>\u4F1A\u5458\u6298\u6263 ${moneyText(quote.memberDiscountAmountYuan)} \xB7 \u8FD0\u8D39 ${moneyText(quote.shippingAmountYuan)} \xB7 \u5E94\u4ED8 ${moneyText(quote.paidAmountYuan)} \xB7 \u786E\u8BA4\u6536\u8D27\u540E\u9884\u8BA1\u83B7\u5F97 ${quote.pointsToEarn} \u79EF\u5206</span>
-        `;
-        });
-      } catch (e) {
-        mounts.forEach((mount) => {
-          mount.textContent = "\u767B\u5F55\u4F1A\u5458\u540E\u53EF\u67E5\u770B\u4F1A\u5458\u6298\u6263\u548C\u9884\u8BA1\u79EF\u5206\u3002";
-        });
       }
     }
     let toastTimer;

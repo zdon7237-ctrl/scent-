@@ -14,7 +14,7 @@ export const allCatalogItems = [
   ...catalogData.products,
   ...catalogData.sampleSets.map((set) => ({
     ...set,
-    brand: "Scent Archive",
+    brand: "Scent Atoll",
     category: "sample",
     country: "Curated",
     stock: "现货",

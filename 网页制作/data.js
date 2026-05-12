@@ -366,11 +366,11 @@ window.SA_DATA = {
   articles: [
     {
       id: "first-niche",
-      category: "Guide",
-      title: "第一次买小众香水，应该从哪些香调开始",
+      category: "Letter",
+      title: "写给第一次认真闻香水的人",
       date: "2026-05-01",
       image: "https://images.unsplash.com/photo-1594035910387-fea47794261f?auto=format&fit=crop&w=1400&q=82",
-      excerpt: "茶香、麝香、柑橘和干净木质是更容易开始的方向。",
+      excerpt: "从茶香、麝香、柑橘和干净木质开始，慢慢建立自己的气味清单。",
       body: [
         "第一次买小众香水，不建议直接从最浓烈、最抽象的作品开始。茶香、干净麝香、轻柑橘和纸感木质通常更容易进入，也更容易在日常穿着。",
         "如果你担心盲买出错，先用试香套装建立自己的气味坐标。记录你喜欢的是清爽、粉感、烟感、甜感还是木质干燥感。",

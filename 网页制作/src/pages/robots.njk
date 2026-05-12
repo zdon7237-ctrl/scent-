@@ -1,0 +1,22 @@
+---
+permalink: robots.txt
+eleventyExcludeFromCollections: true
+---
+User-agent: *
+{% if site.isPlaceholderDomain %}# Launch note: set SITE_URL to the production domain before public indexing.
+{% endif %}
+Allow: /
+Disallow: /admin.html
+Disallow: /member.html
+Disallow: /membership.html
+Disallow: /orders.html
+Disallow: /points.html
+Disallow: /points-mall.html
+Disallow: /points-item.html
+Disallow: /points-redemptions.html
+Disallow: /account.html
+Disallow: /cart.html
+Disallow: /login.html
+Disallow: /register.html
+
+Sitemap: {{ site.url }}/sitemap.xml

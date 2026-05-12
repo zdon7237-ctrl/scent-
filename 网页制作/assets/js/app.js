@@ -12,12 +12,26 @@ import { apiFetch, moneyText } from "./api-client.js";
 import { currentSession, loginMember, logoutMember, registerMember, resetSessionCache } from "./auth-client.js";
 import { cartStore } from "./cart-store.js";
 import { closeCart, openCart, renderCartPage, renderCartShell } from "./cart-ui.js";
-import { quoteCheckout } from "./checkout-client.js";
-import { startCheckout } from "./checkout.js";
-import { adminPayOrder, confirmReceiptOrder, getMemberOrders, getMemberProfile, getPointTransactions, getTierProgress } from "./member-client.js";
 import {
+  adminCancelRedemption,
+  adminCompleteOrder,
+  adminCreateMallItem,
+  adminGetAuditLogs,
+  adminGetMembers,
+  adminGetOrders,
+  adminGetPoints,
   adminGetPointsMallItems,
   adminGetPointsRedemptions,
+  adminLogin,
+  adminLogout,
+  adminPayOrder,
+  adminRefundOrder,
+  adminSetMallItemStatus,
+  adminUpdateRedemptionStatus,
+  getCurrentAdmin
+} from "./admin-client.js";
+import { confirmReceiptOrder, getMemberOrders, getMemberProfile, getPointTransactions, getTierProgress } from "./member-client.js";
+import {
   getPointsMallItem,
   getPointsMallItems,
   getPointsRedemptions,
@@ -38,7 +52,6 @@ if (hasCatalogData) {
   renderProductPage();
   renderBrands();
   renderSamples();
-  renderGuide();
   renderJournal();
   renderCartPage();
   refreshMemberQuote();
@@ -81,29 +94,118 @@ if (hasCatalogData) {
     return Number(rate) >= 1 ? "无折扣" : `${Math.round(Number(rate) * 100)} 折`;
   }
 
+  function sceneLabels(ids = []) {
+    return ids
+      .map((id) => data.scenes.find((scene) => scene.id === id)?.label)
+      .filter(Boolean);
+  }
+
+  function sweetnessLabel(value) {
+    const labels = {
+      low: "低甜",
+      medium: "微甜",
+      high: "明显甜"
+    };
+    return labels[value] || "需试香";
+  }
+
+  function buyingCue(product) {
+    const status = product.status || [];
+    const scenes = product.scenes || [];
+    if (product.caution?.includes("先试") || status.includes("Limited") || status.includes("收藏")) {
+      return "建议先试香";
+    }
+    if (scenes.includes("daily") || status.includes("通勤")) {
+      return "日常低风险";
+    }
+    if (scenes.includes("gift")) {
+      return "适合送礼";
+    }
+    return "读完提醒再买";
+  }
+
+  function statusFlags(product) {
+    return (product.status || []).slice(0, 2).map((item) => `<span>${item}</span>`).join("");
+  }
+
+  function shortText(text = "", max = 58) {
+    return text.length > max ? `${text.slice(0, max)}...` : text;
+  }
+
+  function entryUrl(prefix, id) {
+    return `${prefix}-${encodeURIComponent(id)}.html`;
+  }
+
+  function productUrl(id) {
+    return entryUrl("product", id);
+  }
+
+  function brandUrl(id) {
+    return entryUrl("brand", id);
+  }
+
+  function articleUrl(id) {
+    return entryUrl("article", id);
+  }
+
+  function setFormMessage(form, message, type = "") {
+    const node = $("[data-form-message]", form);
+    if (!node) return;
+    node.textContent = message;
+    node.classList.toggle("is-error", type === "error");
+    node.classList.toggle("is-success", type === "success");
+  }
+
   function productCard(product, options = {}) {
     const compact = options.compact ? " product-card-compact" : "";
     const favorite = state.favorites.has(product.id);
+    const scenes = sceneLabels(product.scenes).slice(0, 2).join(" / ");
+    const href = productUrl(product.id);
+    if (options.compact) {
+      return `
+        <article class="product-card${compact} product-card-minimal">
+          <a class="product-card-media" href="${href}" ${imageStyle(product.image)} aria-label="查看 ${product.name}"></a>
+          <div class="product-card-body">
+            <span class="product-kicker">${product.brand}</span>
+            <h3><a href="${href}">${product.name}</a></h3>
+            <p>${product.family}</p>
+            <div class="price-row">
+              <strong>${formatPrice(product.price)}</strong>
+              <span>${product.volume}</span>
+            </div>
+          </div>
+        </article>
+      `;
+    }
     return `
       <article class="product-card${compact}">
-        <a class="product-card-media" href="product.html?id=${product.id}" ${imageStyle(product.image)} aria-label="查看 ${product.name}"></a>
+        <a class="product-card-media" href="${href}" ${imageStyle(product.image)} aria-label="查看 ${product.name}"></a>
         <div class="product-card-body">
-          <div class="meta-line">
-            <span>${product.brand}</span>
-            <span>${product.stock}</span>
+          <div class="product-card-topline">
+            <div class="meta-line">
+              <span>${product.brand}</span>
+              <span>${product.stock}</span>
+            </div>
+            <div class="card-flags">${statusFlags(product)}</div>
           </div>
-          <h3><a href="product.html?id=${product.id}">${product.name}</a></h3>
+          <h3><a href="${href}">${product.name}</a></h3>
           <p>${product.family} · ${product.concentration}</p>
+          <div class="scent-brief" aria-label="气味判断">
+            <div><span>场景</span><strong>${scenes || product.bestFor}</strong></div>
+            <div><span>甜度</span><strong>${sweetnessLabel(product.sweetness)}</strong></div>
+          </div>
+          <p class="card-note">${shortText(product.buyer || product.description)}</p>
+          <p class="risk-line"><span>购买前</span>${buyingCue(product)}</p>
           <div class="tag-row">${tagList(product.notes)}</div>
           <div class="price-row">
             <strong>${formatPrice(product.price)}</strong>
             <span>${product.volume}</span>
           </div>
           <div class="card-actions">
-            <button class="button button-secondary" type="button" data-favorite="${product.id}">
+            <button class="button button-secondary" type="button" data-favorite="${product.id}" aria-pressed="${favorite}">
               ${favorite ? "已收藏" : "收藏"}
             </button>
-            <button class="button button-primary" type="button" data-add-cart="${product.id}">加入购物车</button>
+            <button class="button button-primary" type="button" data-add-cart="${product.id}">加入意向清单</button>
           </div>
         </div>
       </article>
@@ -112,30 +214,32 @@ if (hasCatalogData) {
 
   function brandCard(brand, compact = false) {
     const products = data.products.filter((product) => product.brandId === brand.id);
+    const href = brandUrl(brand.id);
     return `
       <article class="brand-card ${compact ? "compact-card" : ""}">
-        <a class="brand-card-media" href="brand.html?id=${brand.id}" ${imageStyle(brand.hero)} aria-label="查看 ${brand.name}"></a>
+        <a class="brand-card-media" href="${href}" ${imageStyle(brand.hero)} aria-label="查看 ${brand.name}"></a>
         <div class="brand-card-body">
           <span class="eyebrow">${brand.country}</span>
-          <h3><a href="brand.html?id=${brand.id}">${brand.name}</a></h3>
+          <h3><a href="${href}">${brand.name}</a></h3>
           <p>${brand.intro}</p>
           <div class="tag-row">${tagList(brand.keywords)}</div>
           <strong>入门：${brand.starter}</strong>
-          <a class="text-link" href="brand.html?id=${brand.id}">${products.length} 件作品</a>
+          <a class="text-link" href="${href}">${products.length} 件作品</a>
         </div>
       </article>
     `;
   }
 
   function articleCard(article) {
+    const href = articleUrl(article.id);
     return `
       <article class="article-card">
-        <a class="article-media" href="article.html?id=${article.id}" ${imageStyle(article.image)} aria-label="阅读 ${article.title}"></a>
+        <a class="article-media" href="${href}" ${imageStyle(article.image)} aria-label="阅读 ${article.title}"></a>
         <div class="article-card-body">
           <span class="eyebrow">${article.category} · ${article.date}</span>
-          <h3><a href="article.html?id=${article.id}">${article.title}</a></h3>
+          <h3><a href="${href}">${article.title}</a></h3>
           <p>${article.excerpt}</p>
-          <a class="text-link" href="article.html?id=${article.id}">阅读全文</a>
+          <a class="text-link" href="${href}">阅读全文</a>
         </div>
       </article>
     `;
@@ -154,7 +258,7 @@ if (hasCatalogData) {
             <strong>${formatPrice(set.price)}</strong>
             <span>${set.bestFor}</span>
           </div>
-          <button class="button button-primary" type="button" data-add-cart="${set.id}">加入购物车</button>
+          <button class="button button-primary" type="button" data-add-cart="${set.id}">加入意向清单</button>
         </div>
       </article>
     `;
@@ -170,6 +274,7 @@ if (hasCatalogData) {
       toggle.addEventListener("click", () => {
         const open = header.classList.toggle("nav-open");
         toggle.setAttribute("aria-expanded", String(open));
+        toggle.setAttribute("aria-label", open ? "关闭主导航" : "打开主导航");
       });
     }
 
@@ -179,6 +284,7 @@ if (hasCatalogData) {
         link.addEventListener("click", () => {
           header?.classList.remove("nav-open");
           toggle?.setAttribute("aria-expanded", "false");
+          toggle?.setAttribute("aria-label", "打开主导航");
         });
       });
     }
@@ -201,27 +307,6 @@ if (hasCatalogData) {
         .filter((product) => product.status.includes("New") || product.status.includes("买手推荐"))
         .slice(0, 4);
       newGrid.innerHTML = items.map((product) => productCard(product, { compact: true })).join("");
-    }
-
-    const editGrid = $("[data-home-edits]");
-    if (editGrid) {
-      editGrid.innerHTML = data.edits.map((edit) => `
-        <a class="edit-card" href="${edit.href}" ${imageStyle(edit.image)}>
-          <span>${edit.eyebrow}</span>
-          <h3>${edit.title}</h3>
-          <p>${edit.intro}</p>
-        </a>
-      `).join("");
-    }
-
-    const brandGrid = $("[data-home-brands]");
-    if (brandGrid) {
-      brandGrid.innerHTML = data.brands.slice(0, 4).map((brand) => brandCard(brand, true)).join("");
-    }
-
-    const journalGrid = $("[data-home-articles]");
-    if (journalGrid) {
-      journalGrid.innerHTML = data.articles.slice(0, 3).map(articleCard).join("");
     }
   }
 
@@ -301,7 +386,16 @@ if (hasCatalogData) {
       if (result) result.textContent = `${filtered.length} 件作品`;
       grid.innerHTML = filtered.length
         ? filtered.map((product) => productCard(product)).join("")
-        : `<div class="empty-state">当前筛选没有匹配作品。可以清除筛选，或先从试香套装开始。</div>`;
+        : `
+          <div class="empty-state">
+            <h2>当前筛选没有匹配作品</h2>
+            <p>可以清除筛选，或先从试香套装开始，降低第一次选择的风险。</p>
+            <div class="button-row">
+              <button class="button button-secondary" type="reset" form="${form?.id || ""}">清除筛选</button>
+              <a class="button button-primary" href="samples.html">查看试香套装</a>
+            </div>
+          </div>
+        `;
     }
 
     render();
@@ -311,14 +405,14 @@ if (hasCatalogData) {
     const mount = $("[data-product-page]");
     if (!mount) return;
 
-    const id = params().get("id") || data.products[0].id;
+    const id = mount.dataset.entryId || params().get("id") || data.products[0].id;
     const product = productById(id) || data.products[0];
     const brand = brandById(product.brandId);
     const related = data.products
       .filter((item) => item.id !== product.id && (item.brandId === product.brandId || item.notes.some((note) => product.notes.includes(note))))
       .slice(0, 3);
 
-    document.title = `${product.name} | 气味档案`;
+    document.title = `${product.name} | 馥屿`;
     mount.innerHTML = `
       <nav class="breadcrumb" aria-label="面包屑">
         <a href="index.html">首页</a>
@@ -337,15 +431,35 @@ if (hasCatalogData) {
           <h1>${product.name}</h1>
           <p>${product.description}</p>
           <div class="tag-row">${tagList(product.notes)}</div>
+          <div class="purchase-guidance" aria-label="购买前判断">
+            <div>
+              <span>买手判断</span>
+              <p>${product.buyer}</p>
+            </div>
+            <div>
+              <span>适合场景</span>
+              <strong>${product.bestFor}</strong>
+            </div>
+            <div>
+              <span>盲买提醒</span>
+              <p>${product.caution}</p>
+            </div>
+          </div>
           <div class="purchase-box">
             <div><span>价格</span><strong>${formatPrice(product.price)}</strong></div>
             <div><span>容量</span><strong>${product.volume}</strong></div>
             <div><span>浓度</span><strong>${product.concentration}</strong></div>
             <div><span>库存</span><strong>${product.stock}</strong></div>
           </div>
+          <div class="scent-brief product-detail-brief" aria-label="香水摘要">
+            <div><span>香调家族</span><strong>${product.family}</strong></div>
+            <div><span>甜度</span><strong>${sweetnessLabel(product.sweetness)}</strong></div>
+            <div><span>购买建议</span><strong>${buyingCue(product)}</strong></div>
+          </div>
           <div class="purchase-actions">
-            <button class="button button-primary" type="button" data-add-cart="${product.id}">加入购物车</button>
-            <button class="button button-secondary" type="button" data-favorite="${product.id}">${state.favorites.has(product.id) ? "已收藏" : "收藏"}</button>
+            <button class="button button-primary" type="button" data-add-cart="${product.id}">咨询这支香</button>
+            <a class="button button-secondary" href="samples.html">不确定，先试香</a>
+            <button class="button button-secondary" type="button" data-favorite="${product.id}" aria-pressed="${state.favorites.has(product.id)}">${state.favorites.has(product.id) ? "已收藏" : "收藏"}</button>
           </div>
         </div>
       </section>
@@ -366,11 +480,15 @@ if (hasCatalogData) {
           <p>${product.buyer}</p>
           <p><strong>适合：</strong>${product.bestFor}</p>
           <p><strong>提醒：</strong>${product.caution}</p>
+          <div class="detail-cta">
+            <span class="status-badge">Sample first</span>
+            <a class="text-link" href="samples.html">担心盲买？先从试香套装开始</a>
+          </div>
         </article>
         <article>
           <h2>规格与服务</h2>
-          <p>现货商品 48 小时内发出，默认顺丰。正装未拆封可按政策处理，试香和已拆封商品不支持无理由退换。</p>
-          <a class="text-link" href="service.html">查看配送与退换政策</a>
+          <p>库存、预计发出时间、配送方式和退换条件会在购买前由客服确认。试香、拆封商品和特殊组合的售后规则以客服说明为准。</p>
+          <a class="text-link" href="service.html">查看客服、配送与退换说明</a>
         </article>
       </section>
       <section class="section-tight">
@@ -379,7 +497,7 @@ if (hasCatalogData) {
             <p class="eyebrow">Related</p>
             <h2>相关推荐</h2>
           </div>
-          <a class="text-link" href="${brand ? `brand.html?id=${brand.id}` : "brands.html"}">查看品牌</a>
+          <a class="text-link" href="${brand ? brandUrl(brand.id) : "brands.html"}">查看品牌</a>
         </div>
         <div class="product-grid">${related.map((item) => productCard(item, { compact: true })).join("")}</div>
       </section>
@@ -393,11 +511,11 @@ if (hasCatalogData) {
     const mount = $("[data-brand-page]");
     if (!mount) return;
 
-    const id = params().get("id") || data.brands[0].id;
+    const id = mount.dataset.entryId || params().get("id") || data.brands[0].id;
     const brand = brandById(id) || data.brands[0];
     const products = data.products.filter((product) => product.brandId === brand.id);
 
-    document.title = `${brand.name} | 气味档案`;
+    document.title = `${brand.name} | 馥屿`;
     mount.innerHTML = `
       <section class="split-hero compact-hero">
         <div class="split-copy">
@@ -419,6 +537,11 @@ if (hasCatalogData) {
           <p><strong>创办人 / 调香：</strong>${brand.founder}</p>
           <p><strong>买手入门款：</strong>${brand.starter}</p>
         </article>
+        <article>
+          <h2>入门路线</h2>
+          <p>第一次接触 ${brand.name}，建议先看关键词是否贴合你的场景，再从入门款或同品牌试香开始。</p>
+          <a class="text-link" href="shop.html?brand=${brand.id}">查看可购买作品</a>
+        </article>
       </section>
       <section class="section-tight">
         <div class="section-heading row-heading">
@@ -438,51 +561,6 @@ if (hasCatalogData) {
     if (grid) grid.innerHTML = data.sampleSets.map(sampleCard).join("");
   }
 
-  function renderGuide() {
-    const noteGrid = $("[data-guide-notes]");
-    if (noteGrid) {
-      noteGrid.innerHTML = data.notes.slice(0, 8).map((note) => `<a class="guide-tile" href="shop.html?note=${encodeURIComponent(note)}">${note}</a>`).join("");
-    }
-
-    const sceneGrid = $("[data-guide-scenes]");
-    if (sceneGrid) {
-      sceneGrid.innerHTML = data.scenes.map((scene) => `<a class="guide-tile" href="shop.html?scene=${scene.id}">${scene.label}</a>`).join("");
-    }
-
-    const form = $("[data-quiz]");
-    const result = $("[data-quiz-result]");
-    if (!form || !result) return;
-
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const formData = new FormData(form);
-      const mood = formData.get("mood");
-      const scene = formData.get("scene");
-      const sweet = formData.get("sweet");
-
-      const scored = data.products
-        .filter((product) => product.category === "fragrance")
-        .map((product) => {
-          let score = 0;
-          if (product.mood.includes(mood)) score += 3;
-          if (product.scenes.includes(scene)) score += 2;
-          if (product.sweetness === sweet) score += 2;
-          if (product.status.includes("买手推荐")) score += 1;
-          return { product, score };
-        })
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3)
-        .map(({ product }) => product);
-
-      result.innerHTML = `
-        <h2>推荐结果</h2>
-        <p>先试这三款，再决定是否买正装。也可以直接选择新客发现试香套装。</p>
-        <div class="product-grid compact-grid">${scored.map((product) => productCard(product, { compact: true })).join("")}</div>
-        <a class="button button-secondary" href="samples.html">查看试香套装</a>
-      `;
-    });
-  }
-
   function renderJournal() {
     const grid = $("[data-journal-grid]");
     if (grid) grid.innerHTML = data.articles.map(articleCard).join("");
@@ -490,10 +568,10 @@ if (hasCatalogData) {
     const mount = $("[data-article-page]");
     if (!mount) return;
 
-    const id = params().get("id") || data.articles[0].id;
+    const id = mount.dataset.entryId || params().get("id") || data.articles[0].id;
     const article = articleById(id) || data.articles[0];
     const relatedProducts = article.relatedProducts.map(productById).filter(Boolean);
-    document.title = `${article.title} | 气味档案`;
+    document.title = `${article.title} | 馥屿`;
 
     mount.innerHTML = `
       <article class="article-detail">
@@ -502,6 +580,10 @@ if (hasCatalogData) {
         <h1>${article.title}</h1>
         <div class="article-hero-image" ${imageStyle(article.image)}></div>
         ${article.body.map((paragraph) => `<p>${paragraph}</p>`).join("")}
+        <div class="article-shop-note">
+          <span class="status-badge">Shop the story</span>
+          <p>读完后先看文中推荐，再按“适合场景”和“盲买提醒”决定是否进入试香或正装咨询。</p>
+        </div>
       </article>
       <section class="section-tight">
         <div class="section-heading">
@@ -561,15 +643,22 @@ if (hasCatalogData) {
       loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         const formData = new FormData(loginForm);
+        const submitButton = loginForm.querySelector("button[type='submit']");
+        setFormMessage(loginForm, "正在登录...");
+        if (submitButton) submitButton.disabled = true;
         try {
           await loginMember({
             account: formData.get("account"),
             password: formData.get("password")
           });
+          setFormMessage(loginForm, "登录成功，正在进入会员中心。", "success");
           showToast("登录成功。");
           window.location.href = "account.html";
         } catch (error) {
+          setFormMessage(loginForm, error.message, "error");
           showToast(error.message);
+        } finally {
+          if (submitButton) submitButton.disabled = false;
         }
       });
     }
@@ -579,6 +668,9 @@ if (hasCatalogData) {
       registerForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         const formData = new FormData(registerForm);
+        const submitButton = registerForm.querySelector("button[type='submit']");
+        setFormMessage(registerForm, "正在创建会员账号...");
+        if (submitButton) submitButton.disabled = true;
         try {
           await registerMember({
             name: formData.get("name"),
@@ -586,10 +678,14 @@ if (hasCatalogData) {
             phone: formData.get("phone"),
             password: formData.get("password")
           });
+          setFormMessage(registerForm, "注册成功，正在进入会员中心。", "success");
           showToast("注册成功。");
           window.location.href = "account.html";
         } catch (error) {
+          setFormMessage(registerForm, error.message, "error");
           showToast(error.message);
+        } finally {
+          if (submitButton) submitButton.disabled = false;
         }
       });
     }
@@ -665,7 +761,7 @@ if (hasCatalogData) {
                 <p>${item.note || ""}${item.expiresAt ? ` · 有效至 ${new Date(item.expiresAt).toLocaleDateString("zh-CN")}` : ""}</p>
               </div>
               <strong>${item.points > 0 ? "+" : ""}${item.points}</strong>
-              <span>${new Date(item.createdAt).toLocaleString("zh-CN")}</span>
+              <span class="status-badge">${new Date(item.createdAt).toLocaleDateString("zh-CN")}</span>
             </article>
           `).join("") : `<div class="empty-state">暂无积分流水。</div>`}
         </div>
@@ -792,7 +888,7 @@ if (hasCatalogData) {
                 <p>${order.trackingNo ? `物流单号：${order.trackingNo}` : "等待后台处理"}</p>
               </div>
               <strong>${order.totalPoints} 积分</strong>
-              <span>${redemptionStatusLabel(order.status)}</span>
+              <span class="status-badge">${redemptionStatusLabel(order.status)}</span>
             </article>
           `).join("") : `<div class="empty-state">暂无兑换记录。</div>`}
         </div>
@@ -818,8 +914,7 @@ if (hasCatalogData) {
                 <p>会员折扣：${moneyText(order.memberDiscountAmountYuan)} · ${orderPointsText(order)}</p>
               </div>
               <strong>${moneyText(order.paidAmountYuan)}</strong>
-              <span>${orderStatusLabel(order.status)}</span>
-              ${order.status === "pending_payment" ? `<button class="button button-secondary" type="button" data-admin-pay="${order.id}">开发确认支付</button>` : ""}
+              <span class="status-badge">${orderStatusLabel(order.status)}</span>
               ${["paid", "shipped"].includes(order.status) ? `<button class="button button-secondary" type="button" data-confirm-receipt="${order.id}">确认收货</button>` : ""}
             </article>
           `).join("") : `<div class="empty-state">暂无订单。</div>`}
@@ -866,39 +961,51 @@ if (hasCatalogData) {
   async function renderAdminPage() {
     const mount = $("[data-admin-page]");
     if (!mount) return;
-    const key = window.localStorage.getItem("sa_admin_key")
-      || (["localhost", "127.0.0.1"].includes(window.location.hostname) ? "dev-admin" : "");
-    if (!key) {
+    let session;
+    try {
+      session = await getCurrentAdmin();
+    } catch {
       mount.innerHTML = `
-        <form class="account-form" data-admin-key-form>
-          <label class="field-label">后台密钥<input name="key" required></label>
+        <form class="account-form" data-admin-login-form>
+          <label class="field-label">后台邮箱<input name="email" type="email" autocomplete="username" required></label>
+          <label class="field-label">后台密码<input name="password" type="password" autocomplete="current-password" required></label>
           <button class="button button-primary" type="submit">进入后台</button>
         </form>
       `;
-      $("[data-admin-key-form]", mount)?.addEventListener("submit", (event) => {
+      $("[data-admin-login-form]", mount)?.addEventListener("submit", async (event) => {
         event.preventDefault();
         const formData = new FormData(event.currentTarget);
-        window.localStorage.setItem("sa_admin_key", formData.get("key"));
-        renderAdminPage();
+        try {
+          await adminLogin({
+            email: formData.get("email"),
+            password: formData.get("password")
+          });
+          showToast("已进入后台。");
+          await renderAdminPage();
+        } catch (error) {
+          showToast(error.message);
+        }
       });
       return;
     }
-    window.localStorage.setItem("sa_admin_key", key);
     try {
       const [members, orders, points, logs, mallItems, mallRedemptions] = await Promise.all([
-        apiFetch("/api/admin/members", { headers: { "x-admin-key": key } }),
-        apiFetch("/api/admin/orders", { headers: { "x-admin-key": key } }),
-        apiFetch("/api/admin/points", { headers: { "x-admin-key": key } }),
-        apiFetch("/api/admin/audit-logs", { headers: { "x-admin-key": key } }),
-        adminGetPointsMallItems(key),
-        adminGetPointsRedemptions(key)
+        adminGetMembers(),
+        adminGetOrders(),
+        adminGetPoints(),
+        adminGetAuditLogs(),
+        adminGetPointsMallItems(),
+        adminGetPointsRedemptions()
       ]);
       mount.innerHTML = `
         <div class="section-heading">
           <p class="eyebrow">Admin</p>
           <h2>会员与订单管理</h2>
-          <p>本页面用于本地开发确认支付、确认收货和退款，上线前应替换为正式后台认证。</p>
-          <button class="button button-secondary" type="button" data-admin-export>导出会员名单</button>
+          <p>${session.admin.name || session.admin.email} · ${session.admin.role}</p>
+          <div class="button-row">
+            <button class="button button-secondary" type="button" data-admin-export>导出会员名单</button>
+            <button class="button button-secondary" type="button" data-admin-logout>退出后台</button>
+          </div>
         </div>
         <div class="admin-grid">
           <section>
@@ -1010,18 +1117,12 @@ if (hasCatalogData) {
         const form = event.currentTarget;
         const formData = new FormData(form);
         try {
-          await apiFetch("/api/admin/points-mall/items", {
-            method: "POST",
-            headers: {
-              "x-admin-key": key
-            },
-            body: {
-              name: formData.get("name"),
-              productId: formData.get("productId"),
-              pointsPrice: Number(formData.get("pointsPrice")),
-              stockQuantity: Number(formData.get("stockQuantity")),
-              status: "active"
-            }
+          await adminCreateMallItem({
+            name: formData.get("name"),
+            productId: formData.get("productId"),
+            pointsPrice: Number(formData.get("pointsPrice")),
+            stockQuantity: Number(formData.get("stockQuantity")),
+            status: "active"
           });
           showToast("积分商品已新增。");
           await renderAdminPage();
@@ -1103,23 +1204,12 @@ if (hasCatalogData) {
     }[action] || action;
   }
 
-  async function refreshMemberQuote() {
-    const entries = cartStore.getItems();
+  function refreshMemberQuote() {
     const mounts = $all("[data-member-quote]");
-    if (!mounts.length || !entries.length) return;
-    try {
-      const quote = await quoteCheckout(entries);
-      mounts.forEach((mount) => {
-        mount.innerHTML = `
-          <strong>${quote.tier.name}</strong>
-          <span>会员折扣 ${moneyText(quote.memberDiscountAmountYuan)} · 运费 ${moneyText(quote.shippingAmountYuan)} · 应付 ${moneyText(quote.paidAmountYuan)} · 确认收货后预计获得 ${quote.pointsToEarn} 积分</span>
-        `;
-      });
-    } catch {
-      mounts.forEach((mount) => {
-        mount.textContent = "登录会员后可查看会员折扣和预计积分。";
-      });
-    }
+    if (!mounts.length) return;
+    mounts.forEach((mount) => {
+      mount.textContent = "试运营期间暂不开放在线支付，清单仅用于人工咨询与预约试香。";
+    });
   }
 
   function addToCart(id) {
@@ -1128,7 +1218,8 @@ if (hasCatalogData) {
       renderCartShell();
       renderCartPage();
       refreshMemberQuote();
-      showToast(`${item.name} 已加入购物车`);
+      openCart();
+      showToast(`${item.name} 已加入意向清单`);
     } catch (error) {
       showToast(error.message);
     }
@@ -1160,6 +1251,7 @@ if (hasCatalogData) {
     writeStore("sa_favorites", Array.from(state.favorites));
     $all(`[data-favorite="${CSS.escape(id)}"]`).forEach((button) => {
       button.textContent = state.favorites.has(id) ? "已收藏" : "收藏";
+      button.setAttribute("aria-pressed", String(state.favorites.has(id)));
     });
   }
 
@@ -1186,7 +1278,6 @@ if (hasCatalogData) {
       const open = event.target.closest("[data-open-cart]");
       const close = event.target.closest("[data-close-cart]");
       const change = event.target.closest("[data-cart-change]");
-      const checkout = event.target.closest("[data-checkout]");
       const service = event.target.closest("[data-service-action]");
       const logout = event.target.closest("[data-logout]");
       const adminPay = event.target.closest("[data-admin-pay]");
@@ -1194,6 +1285,7 @@ if (hasCatalogData) {
       const adminComplete = event.target.closest("[data-admin-complete]");
       const confirmReceipt = event.target.closest("[data-confirm-receipt]");
       const adminExport = event.target.closest("[data-admin-export]");
+      const adminLogoutButton = event.target.closest("[data-admin-logout]");
       const adminMallActivate = event.target.closest("[data-admin-mall-activate]");
       const adminMallDeactivate = event.target.closest("[data-admin-mall-deactivate]");
       const adminRedemptionStatus = event.target.closest("[data-admin-redemption-status]");
@@ -1204,25 +1296,6 @@ if (hasCatalogData) {
       if (open) openCart();
       if (close) closeCart();
       if (change) changeCart(change.dataset.cartChange, Number(change.dataset.delta));
-      if (checkout) {
-        try {
-          const result = await startCheckout(cartStore.getItems());
-          showToast(result.message);
-          if (result.redirect) {
-            setTimeout(() => {
-              window.location.href = result.redirect;
-            }, 700);
-          }
-          if (result.order) {
-            cartStore.clear();
-            renderCartShell();
-            renderCartPage();
-            refreshMemberQuote();
-          }
-        } catch (error) {
-          showToast(error.message);
-        }
-      }
       if (service) showToast(service.dataset.serviceAction);
       if (logout) {
         try {
@@ -1235,13 +1308,12 @@ if (hasCatalogData) {
         }
       }
       if (adminPay) {
-        const key = window.prompt("输入后台确认支付密钥", "dev-admin");
-        if (!key) return;
         try {
-          await adminPayOrder(adminPay.dataset.adminPay, key);
+          await adminPayOrder(adminPay.dataset.adminPay);
           resetSessionCache();
           showToast("订单已确认支付，等待客户确认收货后结算积分和等级。");
           await renderOrdersPage();
+          await renderAdminPage();
           await initAuthHeader();
         } catch (error) {
           showToast(error.message);
@@ -1259,15 +1331,8 @@ if (hasCatalogData) {
         }
       }
       if (adminComplete) {
-        const key = window.prompt("输入后台确认收货密钥", window.localStorage.getItem("sa_admin_key") || "dev-admin");
-        if (!key) return;
         try {
-          await apiFetch(`/api/admin/orders/${encodeURIComponent(adminComplete.dataset.adminComplete)}/complete`, {
-            method: "POST",
-            headers: {
-              "x-admin-key": key
-            }
-          });
+          await adminCompleteOrder(adminComplete.dataset.adminComplete);
           resetSessionCache();
           showToast("订单已确认收货，积分和等级已结算。");
           await renderAdminPage();
@@ -1278,15 +1343,8 @@ if (hasCatalogData) {
         }
       }
       if (adminRefund) {
-        const key = window.prompt("输入后台退款密钥", window.localStorage.getItem("sa_admin_key") || "dev-admin");
-        if (!key) return;
         try {
-          await apiFetch(`/api/admin/orders/${encodeURIComponent(adminRefund.dataset.adminRefund)}/refund`, {
-            method: "POST",
-            headers: {
-              "x-admin-key": key
-            }
-          });
+          await adminRefundOrder(adminRefund.dataset.adminRefund);
           resetSessionCache();
           showToast("订单已退款，积分和累计消费已扣回。");
           await renderAdminPage();
@@ -1297,17 +1355,10 @@ if (hasCatalogData) {
         }
       }
       if (adminMallActivate || adminMallDeactivate) {
-        const key = window.localStorage.getItem("sa_admin_key") || window.prompt("输入后台密钥", "dev-admin");
-        if (!key) return;
         const node = adminMallActivate || adminMallDeactivate;
         const action = adminMallActivate ? "activate" : "deactivate";
         try {
-          await apiFetch(`/api/admin/points-mall/items/${encodeURIComponent(node.dataset.adminMallActivate || node.dataset.adminMallDeactivate)}/${action}`, {
-            method: "POST",
-            headers: {
-              "x-admin-key": key
-            }
-          });
+          await adminSetMallItemStatus(node.dataset.adminMallActivate || node.dataset.adminMallDeactivate, action);
           showToast(action === "activate" ? "积分商品已上架。" : "积分商品已下架。");
           await renderAdminPage();
         } catch (error) {
@@ -1315,21 +1366,13 @@ if (hasCatalogData) {
         }
       }
       if (adminRedemptionStatus) {
-        const key = window.localStorage.getItem("sa_admin_key") || window.prompt("输入后台密钥", "dev-admin");
-        if (!key) return;
         const trackingNo = adminRedemptionStatus.dataset.status === "shipped"
           ? window.prompt("物流单号，可留空", "")
           : "";
         try {
-          await apiFetch(`/api/admin/points-mall/redemptions/${encodeURIComponent(adminRedemptionStatus.dataset.adminRedemptionStatus)}/status`, {
-            method: "PATCH",
-            headers: {
-              "x-admin-key": key
-            },
-            body: {
-              status: adminRedemptionStatus.dataset.status,
-              trackingNo
-            }
+          await adminUpdateRedemptionStatus(adminRedemptionStatus.dataset.adminRedemptionStatus, {
+            status: adminRedemptionStatus.dataset.status,
+            trackingNo
           });
           showToast("兑换订单状态已更新。");
           await renderAdminPage();
@@ -1338,18 +1381,8 @@ if (hasCatalogData) {
         }
       }
       if (adminRedemptionCancel) {
-        const key = window.localStorage.getItem("sa_admin_key") || window.prompt("输入后台密钥", "dev-admin");
-        if (!key) return;
         try {
-          await apiFetch(`/api/admin/points-mall/redemptions/${encodeURIComponent(adminRedemptionCancel.dataset.adminRedemptionCancel)}/cancel`, {
-            method: "POST",
-            headers: {
-              "x-admin-key": key
-            },
-            body: {
-              reason: "后台取消兑换"
-            }
-          });
+          await adminCancelRedemption(adminRedemptionCancel.dataset.adminRedemptionCancel);
           resetSessionCache();
           showToast("兑换订单已取消，积分和库存已返还。");
           await renderAdminPage();
@@ -1358,14 +1391,8 @@ if (hasCatalogData) {
         }
       }
       if (adminExport) {
-        const key = window.localStorage.getItem("sa_admin_key") || window.prompt("输入后台导出密钥", "dev-admin");
-        if (!key) return;
         try {
-          const response = await fetch("/api/admin/members/export.csv", {
-            headers: {
-              "x-admin-key": key
-            }
-          });
+          const response = await fetch("/api/admin/members/export.csv");
           if (!response.ok) {
             const payload = await response.json().catch(() => ({}));
             throw new Error(payload.error || "会员名单导出失败。");
@@ -1374,12 +1401,21 @@ if (hasCatalogData) {
           const url = URL.createObjectURL(blob);
           const link = document.createElement("a");
           link.href = url;
-          link.download = `scent-archive-members-${new Date().toISOString().slice(0, 10)}.csv`;
+          link.download = `scent-atoll-members-${new Date().toISOString().slice(0, 10)}.csv`;
           document.body.appendChild(link);
           link.click();
           link.remove();
           URL.revokeObjectURL(url);
           showToast("会员名单已导出。");
+        } catch (error) {
+          showToast(error.message);
+        }
+      }
+      if (adminLogoutButton) {
+        try {
+          await adminLogout();
+          showToast("已退出后台。");
+          await renderAdminPage();
         } catch (error) {
           showToast(error.message);
         }

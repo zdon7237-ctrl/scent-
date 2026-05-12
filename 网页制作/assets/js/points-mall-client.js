@@ -18,20 +18,3 @@ export function redeemPointsMallItem(payload) {
 export function getPointsRedemptions() {
   return apiFetch("/api/points-mall/redemptions");
 }
-
-export function adminGetPointsMallItems(key) {
-  return apiFetch("/api/admin/points-mall/items", {
-    headers: {
-      "x-admin-key": key
-    }
-  });
-}
-
-export function adminGetPointsRedemptions(key) {
-  return apiFetch("/api/admin/points-mall/redemptions", {
-    headers: {
-      "x-admin-key": key
-    }
-  });
-}
-

@@ -1,0 +1,39 @@
+---
+pagination:
+  data: catalog.productsForPages
+  size: 1
+  alias: product
+permalink: "{{ product.pagePath }}"
+layout: layout.njk
+pageKey: "shop"
+mainClass: "page-shell"
+eleventyComputed:
+  title: "{{ product.name }} | 馥屿"
+  description: "{{ product.description }}"
+  canonicalPath: "/{{ product.pagePath }}"
+  mainAttributes: "data-product-page data-entry-id=\"{{ product.id }}\""
+---
+<nav class="breadcrumb" aria-label="面包屑">
+  <a href="index.html">首页</a>
+  <span>/</span>
+  <a href="shop.html">香水</a>
+  <span>/</span>
+  <span>{{ product.name }}</span>
+</nav>
+<section class="product-detail">
+  <div class="product-gallery">
+    <div class="product-main-image" style="--image: url('{{ product.image }}')"></div>
+  </div>
+  <div class="product-purchase">
+    <p class="eyebrow">{{ product.brand }} · {{ product.country }}</p>
+    <h1>{{ product.name }}</h1>
+    <p>{{ product.description }}</p>
+    <div class="purchase-box">
+      <div><span>价格</span><strong>¥{{ product.price }}</strong></div>
+      <div><span>容量</span><strong>{{ product.volume }}</strong></div>
+      <div><span>浓度</span><strong>{{ product.concentration }}</strong></div>
+      <div><span>库存</span><strong>{{ product.stock }}</strong></div>
+    </div>
+    <p>{{ product.buyer }}</p>
+  </div>
+</section>

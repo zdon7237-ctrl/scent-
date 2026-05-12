@@ -16,9 +16,12 @@ export function cartMarkup(compact = true) {
   if (!entries.length) {
     return `
       <div class="cart-empty">
-        <h2>购物车是空的</h2>
-        <p>可以先从新品、试香套装或选香问卷开始。</p>
-        <a class="button button-primary" href="shop.html">探索香水</a>
+        <h2>意向清单是空的</h2>
+        <p>可以先从试香套装降低盲买风险，也可以直接进入香水列表筛选。</p>
+        <div class="button-row">
+          <a class="button button-primary" href="samples.html">先选试香</a>
+          <a class="button button-secondary" href="shop.html">探索香水</a>
+        </div>
       </div>
     `;
   }
@@ -30,7 +33,7 @@ export function cartMarkup(compact = true) {
           <div class="cart-row-image" ${imageStyle(item.image)}></div>
           <div>
             <h3>${item.name}</h3>
-            <p>${item.brand || "Scent Archive"} · ${formatPrice(item.price)}</p>
+            <p>${item.brand || "Scent Atoll"} · ${formatPrice(item.price)}</p>
             <div class="qty-control">
               <button type="button" data-cart-change="${item.id}" data-delta="-1" aria-label="减少数量">-</button>
               <span>${qty}</span>
@@ -42,12 +45,12 @@ export function cartMarkup(compact = true) {
       `).join("")}
     </div>
     <div class="cart-total">
-      <span>小计</span>
+      <span>意向小计</span>
       <strong>${formatPrice(total)}</strong>
     </div>
-    <div class="member-quote" data-member-quote>登录后可查看会员折扣和预计积分。</div>
-    <button class="button button-primary full" type="button" data-checkout>提交订单</button>
-    ${compact ? `<a class="text-link" href="cart.html">查看完整购物车</a>` : `<p class="service-note">订单提交后由后台确认支付，客户确认收货后自动发放积分和更新等级。</p>`}
+    <div class="member-quote" data-member-quote>试运营期间暂不开放在线支付，清单仅用于人工咨询与预约试香。</div>
+    <a class="button button-primary full" href="service.html">预约人工咨询</a>
+    ${compact ? `<a class="text-link" href="cart.html">查看完整意向清单</a>` : `<p class="service-note">提交前无需支付。顾问会根据清单协助确认试香、库存和后续购买方式。</p>`}
   `;
 }
 
@@ -65,8 +68,8 @@ export function renderCartShell() {
     <aside class="cart-drawer" data-cart-drawer aria-hidden="true" aria-labelledby="cart-title">
       <div class="cart-panel">
         <div class="cart-header">
-          <h2 id="cart-title">购物车</h2>
-          <button class="icon-button" type="button" data-close-cart aria-label="关闭购物车">×</button>
+          <h2 id="cart-title">意向清单</h2>
+          <button class="icon-button" type="button" data-close-cart aria-label="关闭意向清单">×</button>
         </div>
         <div class="cart-content">${cartMarkup(true)}</div>
       </div>

@@ -28,12 +28,3 @@ export function confirmReceiptOrder(orderId) {
     method: "POST"
   });
 }
-
-export function adminPayOrder(orderId, key) {
-  return apiFetch(`/api/admin/orders/${encodeURIComponent(orderId)}/pay`, {
-    method: "POST",
-    headers: {
-      "x-admin-key": key
-    }
-  });
-}

@@ -1,0 +1,28 @@
+---
+permalink: sitemap.xml
+eleventyExcludeFromCollections: true
+---
+<?xml version="1.0" encoding="UTF-8"?>
+{% if site.isPlaceholderDomain %}<!-- Launch note: set SITE_URL to the production domain before public indexing. -->
+{% endif %}
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{{ site.url }}/</loc></url>
+  <url><loc>{{ site.url }}/shop.html</loc></url>
+  <url><loc>{{ site.url }}/brands.html</loc></url>
+  <url><loc>{{ site.url }}/samples.html</loc></url>
+  <url><loc>{{ site.url }}/journal.html</loc></url>
+  <url><loc>{{ site.url }}/about.html</loc></url>
+  <url><loc>{{ site.url }}/service.html</loc></url>
+  <url><loc>{{ site.url }}/payment.html</loc></url>
+  <url><loc>{{ site.url }}/privacy.html</loc></url>
+  <url><loc>{{ site.url }}/terms.html</loc></url>
+{% for product in catalog.sitemapProducts %}
+  <url><loc>{{ site.url }}/{{ product.path }}</loc></url>
+{% endfor %}
+{% for brand in catalog.sitemapBrands %}
+  <url><loc>{{ site.url }}/{{ brand.path }}</loc></url>
+{% endfor %}
+{% for article in catalog.sitemapArticles %}
+  <url><loc>{{ site.url }}/{{ article.path }}</loc></url>
+{% endfor %}
+</urlset>

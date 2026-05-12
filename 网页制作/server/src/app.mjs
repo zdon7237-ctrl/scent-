@@ -1,19 +1,73 @@
 import { createServer } from "node:http";
 import { randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
-import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { createReadStream, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import { createRepository } from "./repository.mjs";
 
 const modulePath = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(modulePath);
 const rootDir = path.resolve(__dirname, "../..");
 const publicDir = path.resolve(process.env.PUBLIC_DIR || path.join(rootDir, "dist"));
 const dataFile = path.resolve(process.env.MEMBER_DB || path.join(rootDir, "server/data/db.json"));
+const repository = createRepository({ dataFile });
 const port = Number(process.env.PORT || 8788);
 const sessionMaxAgeMs = 1000 * 60 * 60 * 24 * 30;
-const adminKey = process.env.ADMIN_KEY || "dev-admin";
+const isProduction = process.env.NODE_ENV === "production";
+const defaultSeedAdminPassword = ["dev", "admin"].join("-");
+const seedAdminEmail = String(process.env.SEED_ADMIN_EMAIL || "admin@scent.local").trim().toLowerCase();
+const seedAdminPassword = String(process.env.SEED_ADMIN_PASSWORD || (isProduction ? "" : defaultSeedAdminPassword));
+const seedAdminRole = String(process.env.SEED_ADMIN_ROLE || "owner").trim().toLowerCase();
+const defaultPaymentWebhookSecret = "dev-webhook";
+const paymentWebhookSecret = String(process.env.PAYMENT_WEBHOOK_SECRET || (isProduction ? "" : defaultPaymentWebhookSecret));
+
+if (isProduction && (!process.env.PAYMENT_WEBHOOK_SECRET || paymentWebhookSecret === defaultPaymentWebhookSecret)) {
+  throw new Error("生产环境必须设置安全的 PAYMENT_WEBHOOK_SECRET。");
+}
+
+if (isProduction && seedAdminEmail && !process.env.SEED_ADMIN_PASSWORD) {
+  throw new Error("生产环境必须显式设置 SEED_ADMIN_PASSWORD 或使用正式管理员创建流程。");
+}
+
+const adminPermissionsByRole = {
+  owner: [
+    "admin:read",
+    "admin:export",
+    "orders:read",
+    "orders:write",
+    "members:read",
+    "members:write",
+    "points:read",
+    "points:write",
+    "tiers:read",
+    "tiers:write",
+    "mall:read",
+    "mall:write",
+    "redemptions:read",
+    "redemptions:write",
+    "logs:read"
+  ],
+  manager: [
+    "admin:export",
+    "orders:read",
+    "orders:write",
+    "members:read",
+    "members:write",
+    "points:read",
+    "points:write",
+    "tiers:read",
+    "tiers:write",
+    "mall:read",
+    "mall:write",
+    "redemptions:read",
+    "redemptions:write",
+    "logs:read"
+  ],
+  support: ["orders:read", "orders:write", "members:read", "points:read"],
+  fulfillment: ["orders:read", "orders:write", "members:read", "mall:read", "redemptions:read", "redemptions:write"]
+};
 
 const money = {
   fromYuan(value) {
@@ -199,6 +253,8 @@ function defaultDb() {
     pointsRedemptionItems: [],
     operationLogs: [],
     sessions: [],
+    adminUsers: [],
+    adminSessions: [],
     coupons: [],
     couponRedemptions: []
   };
@@ -219,11 +275,25 @@ function normalizeDb(db) {
     "pointsRedemptionItems",
     "operationLogs",
     "sessions",
+    "adminUsers",
+    "adminSessions",
     "coupons",
     "couponRedemptions"
   ].forEach((key) => {
     if (!Array.isArray(normalized[key])) normalized[key] = [];
   });
+  if (!normalized.adminUsers.length && seedAdminEmail && seedAdminPassword) {
+    normalized.adminUsers.push({
+      id: randomUUID(),
+      email: seedAdminEmail,
+      name: "Scent Admin",
+      role: adminPermissionsByRole[seedAdminRole] ? seedAdminRole : "owner",
+      passwordHash: hashPassword(seedAdminPassword),
+      status: "active",
+      createdAt: now(),
+      updatedAt: now()
+    });
+  }
   const oldSeededTiers = {
     base: { minLifetimePaidAmount: 0, discountRate: 1 },
     silver: { minLifetimePaidAmount: 300000, discountRate: 0.98 },
@@ -258,20 +328,17 @@ function normalizeDb(db) {
 }
 
 async function ensureDb() {
-  await mkdir(path.dirname(dataFile), { recursive: true });
-  if (!existsSync(dataFile)) {
-    await writeFile(dataFile, JSON.stringify(defaultDb(), null, 2));
-  }
+  const db = await repository.read();
+  if (!Object.keys(db).length) await repository.write(defaultDb());
 }
 
 async function readDb() {
   await ensureDb();
-  return normalizeDb(JSON.parse(await readFile(dataFile, "utf8")));
+  return normalizeDb(await repository.read());
 }
 
 async function writeDb(db) {
-  await mkdir(path.dirname(dataFile), { recursive: true });
-  await writeFile(dataFile, JSON.stringify(db, null, 2));
+  await repository.write(normalizeDb(db));
 }
 
 function getBaseTier(db) {
@@ -356,14 +423,15 @@ function snapshot(value) {
   return JSON.parse(JSON.stringify(value ?? null));
 }
 
-function adminActor(req) {
-  return String(req.headers["x-admin-actor"] || "admin").slice(0, 80);
-}
-
 function logAdminOperation(db, req, action, entityType, entityId, before, after, reason = "") {
+  const admin = req?.currentAdmin || null;
   db.operationLogs.push({
     id: randomUUID(),
-    actor: adminActor(req),
+    actor: admin ? `${admin.name || admin.email} (${admin.role})` : "system",
+    actorAdminId: admin?.id || null,
+    actorName: admin?.name || null,
+    actorEmail: admin?.email || null,
+    actorRole: admin?.role || null,
     action,
     entityType,
     entityId,
@@ -418,12 +486,29 @@ function clearSessionCookie() {
   return "sa_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
 }
 
+function adminSessionCookie(sessionId) {
+  return `sa_admin_session=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(sessionMaxAgeMs / 1000)}`;
+}
+
+function clearAdminSessionCookie() {
+  return "sa_admin_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
+}
+
 async function currentUser(req, db) {
   const sessionId = parseCookies(req.headers.cookie).sa_session;
   if (!sessionId) return null;
   const session = db.sessions.find((item) => item.id === sessionId);
   if (!session || new Date(session.expiresAt).getTime() <= Date.now()) return null;
   return db.users.find((user) => user.id === session.userId && user.status === "active") || null;
+}
+
+async function currentAdmin(req, db) {
+  const sessionId = parseCookies(req.headers.cookie).sa_admin_session;
+  if (!sessionId) return null;
+  const session = db.adminSessions.find((item) => item.id === sessionId);
+  if (!session || new Date(session.expiresAt).getTime() <= Date.now()) return null;
+  const admin = db.adminUsers.find((item) => item.id === session.adminUserId && item.status === "active");
+  return admin || null;
 }
 
 function publicUser(user) {
@@ -435,6 +520,84 @@ function publicUser(user) {
     name: user.name,
     createdAt: user.createdAt
   };
+}
+
+function adminPermissions(role) {
+  return adminPermissionsByRole[role] || [];
+}
+
+function publicAdmin(admin) {
+  if (!admin) return null;
+  return {
+    id: admin.id,
+    email: admin.email,
+    name: admin.name,
+    role: admin.role,
+    permissions: adminPermissions(admin.role),
+    createdAt: admin.createdAt
+  };
+}
+
+function requireAdmin(res, admin) {
+  if (!admin) {
+    sendError(res, 401, "请先登录后台。");
+    return false;
+  }
+  return true;
+}
+
+function requirePermission(res, admin, permission) {
+  if (!requireAdmin(res, admin)) return false;
+  if (!adminPermissions(admin.role).includes(permission)) {
+    sendError(res, 403, "当前后台账号没有此操作权限。");
+    return false;
+  }
+  return true;
+}
+
+function normalizedOrigin(value) {
+  if (!value) return null;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+function configuredOrigins() {
+  return String(process.env.APP_ORIGIN || "")
+    .split(",")
+    .map((origin) => normalizedOrigin(origin.trim()))
+    .filter(Boolean);
+}
+
+function requestOrigin(req) {
+  return normalizedOrigin(req.headers.origin) || normalizedOrigin(req.headers.referer);
+}
+
+function trustedRequestOrigin(req) {
+  const origin = requestOrigin(req);
+  if (!origin) return false;
+
+  const allowed = new Set(configuredOrigins());
+  const host = req.headers.host;
+  if (host) {
+    const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+    allowed.add(`${forwardedProto || (isProduction ? "https" : "http")}://${host}`);
+    if (!isProduction) {
+      allowed.add(`http://${host}`);
+      allowed.add(`https://${host}`);
+    }
+  }
+  return allowed.has(origin);
+}
+
+function requireTrustedAdminWriteOrigin(req, res, pathname) {
+  if (!pathname.startsWith("/api/admin")) return true;
+  if (!["POST", "PATCH", "PUT", "DELETE"].includes(req.method)) return true;
+  if (trustedRequestOrigin(req)) return true;
+  sendError(res, 403, "后台请求来源校验失败。");
+  return false;
 }
 
 function profilePayload(db, user) {
@@ -477,7 +640,7 @@ const catalog = loadCatalog();
 function catalogItemById(id) {
   const sampleSets = (catalog.sampleSets || []).map((set) => ({
     ...set,
-    brand: "Scent Archive",
+    brand: "Scent Atoll",
     category: "sample",
     stock: "现货",
     concentration: "Sample Set",
@@ -731,7 +894,7 @@ function calculateQuote(db, user, rawItems) {
     return {
       productId: item.id,
       productName: item.name,
-      brandName: item.brand || "Scent Archive",
+      brandName: item.brand || "Scent Atoll",
       unitPrice,
       unitPriceYuan: money.toYuan(unitPrice),
       quantity: entry.quantity,
@@ -919,9 +1082,12 @@ function refundPaidOrder(db, order) {
 async function handleApi(req, res, pathname) {
   const db = await readDb();
   const user = await currentUser(req, db);
+  const admin = await currentAdmin(req, db);
   const body = ["POST", "PATCH", "PUT"].includes(req.method) ? await requestBody(req) : {};
 
   try {
+    if (!requireTrustedAdminWriteOrigin(req, res, pathname)) return;
+
     if (req.method === "POST" && pathname === "/api/auth/register") {
       const email = String(body.email || "").trim().toLowerCase();
       const phone = String(body.phone || "").trim();
@@ -1162,7 +1328,7 @@ async function handleApi(req, res, pathname) {
     }
 
     if (req.method === "POST" && pathname === "/api/webhooks/payment") {
-      if (req.headers["x-admin-key"] !== adminKey) return sendError(res, 403, "Webhook 密钥错误。");
+      if (req.headers["x-webhook-secret"] !== paymentWebhookSecret) return sendError(res, 403, "Webhook 密钥错误。");
       const order = db.orders.find((item) => item.id === body.orderId || item.orderNo === body.orderNo);
       if (!order) return sendError(res, 404, "订单不存在。");
       if (body.status !== "paid") return sendError(res, 400, "当前只支持 paid 支付事件。");
@@ -1176,10 +1342,42 @@ async function handleApi(req, res, pathname) {
       });
     }
 
+    if (req.method === "POST" && pathname === "/api/admin/auth/login") {
+      const email = String(body.email || "").trim().toLowerCase();
+      const password = String(body.password || "");
+      const adminUser = db.adminUsers.find((item) => item.email === email && item.status === "active");
+      if (!adminUser || !verifyPassword(password, adminUser.passwordHash)) return sendError(res, 401, "后台账号或密码错误。");
+      const session = {
+        id: randomUUID(),
+        adminUserId: adminUser.id,
+        createdAt: now(),
+        expiresAt: new Date(Date.now() + sessionMaxAgeMs).toISOString()
+      };
+      db.adminSessions.push(session);
+      adminUser.lastLoginAt = now();
+      await writeDb(db);
+      return sendJson(res, 200, { admin: publicAdmin(adminUser) }, { "set-cookie": adminSessionCookie(session.id) });
+    }
+
+    if (req.method === "POST" && pathname === "/api/admin/auth/logout") {
+      const sessionId = parseCookies(req.headers.cookie).sa_admin_session;
+      if (sessionId) db.adminSessions = db.adminSessions.filter((item) => item.id !== sessionId);
+      await writeDb(db);
+      return sendJson(res, 200, { ok: true }, { "set-cookie": clearAdminSessionCookie() });
+    }
+
+    if (req.method === "GET" && pathname === "/api/admin/auth/me") {
+      if (!requireAdmin(res, admin)) return;
+      return sendJson(res, 200, { admin: publicAdmin(admin) });
+    }
+
     if (pathname.startsWith("/api/admin")) {
-      if (req.headers["x-admin-key"] !== adminKey) return sendError(res, 403, "后台密钥错误。");
+      if (!requireAdmin(res, admin)) return;
+      req.currentAdmin = admin;
+      const guard = (permission) => requirePermission(res, admin, permission);
 
       if (req.method === "GET" && pathname === "/api/admin/audit-logs") {
+        if (!guard("logs:read")) return;
         return sendJson(res, 200, {
           logs: db.operationLogs
             .slice()
@@ -1189,6 +1387,7 @@ async function handleApi(req, res, pathname) {
       }
 
       if (req.method === "GET" && pathname === "/api/admin/points") {
+        if (!guard("points:read")) return;
         let changed = false;
         db.users.forEach((item) => {
           if (expirePointsForUser(db, item.id)) changed = true;
@@ -1210,6 +1409,7 @@ async function handleApi(req, res, pathname) {
       }
 
       if (req.method === "GET" && pathname === "/api/admin/points-mall/items") {
+        if (!guard("mall:read")) return;
         return sendJson(res, 200, {
           items: db.pointsMallItems
             .slice()
@@ -1219,6 +1419,7 @@ async function handleApi(req, res, pathname) {
       }
 
       if (req.method === "POST" && pathname === "/api/admin/points-mall/items") {
+        if (!guard("mall:write")) return;
         const productId = body.productId ? String(body.productId).trim() : null;
         const linkedProduct = productId ? catalogItemById(productId) : null;
         if (productId && !linkedProduct) return sendError(res, 404, "关联商品不存在。");
@@ -1253,6 +1454,7 @@ async function handleApi(req, res, pathname) {
 
       const mallAdminActionMatch = pathname.match(/^\/api\/admin\/points-mall\/items\/([^/]+)\/(activate|deactivate)$/);
       if (req.method === "POST" && mallAdminActionMatch) {
+        if (!guard("mall:write")) return;
         const item = db.pointsMallItems.find((entry) => entry.id === mallAdminActionMatch[1]);
         if (!item) return sendError(res, 404, "积分商品不存在。");
         const before = snapshot(item);
@@ -1275,6 +1477,7 @@ async function handleApi(req, res, pathname) {
 
       const mallAdminItemMatch = pathname.match(/^\/api\/admin\/points-mall\/items\/([^/]+)$/);
       if (req.method === "PATCH" && mallAdminItemMatch) {
+        if (!guard("mall:write")) return;
         const item = db.pointsMallItems.find((entry) => entry.id === mallAdminItemMatch[1]);
         if (!item) return sendError(res, 404, "积分商品不存在。");
         const before = snapshot(item);
@@ -1308,6 +1511,7 @@ async function handleApi(req, res, pathname) {
       }
 
       if (req.method === "GET" && pathname === "/api/admin/points-mall/redemptions") {
+        if (!guard("redemptions:read")) return;
         return sendJson(res, 200, {
           redemptions: db.pointsRedemptionOrders
             .slice()
@@ -1318,6 +1522,7 @@ async function handleApi(req, res, pathname) {
 
       const adminRedemptionStatusMatch = pathname.match(/^\/api\/admin\/points-mall\/redemptions\/([^/]+)\/status$/);
       if (req.method === "PATCH" && adminRedemptionStatusMatch) {
+        if (!guard("redemptions:write")) return;
         const order = db.pointsRedemptionOrders.find((item) => item.id === adminRedemptionStatusMatch[1]);
         if (!order) return sendError(res, 404, "兑换订单不存在。");
         const before = redemptionPayload(db, order, true);
@@ -1342,6 +1547,7 @@ async function handleApi(req, res, pathname) {
 
       const adminRedemptionCancelMatch = pathname.match(/^\/api\/admin\/points-mall\/redemptions\/([^/]+)\/cancel$/);
       if (req.method === "POST" && adminRedemptionCancelMatch) {
+        if (!guard("redemptions:write")) return;
         const order = db.pointsRedemptionOrders.find((item) => item.id === adminRedemptionCancelMatch[1]);
         if (!order) return sendError(res, 404, "兑换订单不存在。");
         const before = redemptionPayload(db, order, true);
@@ -1353,12 +1559,14 @@ async function handleApi(req, res, pathname) {
 
       const adminRedemptionMatch = pathname.match(/^\/api\/admin\/points-mall\/redemptions\/([^/]+)$/);
       if (req.method === "GET" && adminRedemptionMatch) {
+        if (!guard("redemptions:read")) return;
         const order = db.pointsRedemptionOrders.find((item) => item.id === adminRedemptionMatch[1]);
         if (!order) return sendError(res, 404, "兑换订单不存在。");
         return sendJson(res, 200, { redemption: redemptionPayload(db, order, true) });
       }
 
       if (req.method === "GET" && pathname === "/api/admin/members") {
+        if (!guard("members:read")) return;
         let changed = false;
         db.users.forEach((item) => {
           if (expirePointsForUser(db, item.id)) changed = true;
@@ -1370,6 +1578,7 @@ async function handleApi(req, res, pathname) {
       }
 
       if (req.method === "GET" && pathname === "/api/admin/members/export.csv") {
+        if (!guard("admin:export")) return;
         const rows = [
           ["id", "name", "email", "phone", "tier", "available_points", "lifetime_paid_yuan", "created_at"],
           ...db.users.map((item) => {
@@ -1388,13 +1597,14 @@ async function handleApi(req, res, pathname) {
         ];
         return sendCsv(
           res,
-          `scent-archive-members-${new Date().toISOString().slice(0, 10)}.csv`,
+          `scent-atoll-members-${new Date().toISOString().slice(0, 10)}.csv`,
           rows.map((row) => row.map(csvCell).join(",")).join("\n")
         );
       }
 
       const memberMatch = pathname.match(/^\/api\/admin\/members\/([^/]+)$/);
       if (req.method === "GET" && memberMatch) {
+        if (!guard("members:read")) return;
         const member = db.users.find((item) => item.id === memberMatch[1]);
         if (!member) return sendError(res, 404, "会员不存在。");
         return sendJson(res, 200, profilePayload(db, member));
@@ -1402,6 +1612,7 @@ async function handleApi(req, res, pathname) {
 
       const memberTierMatch = pathname.match(/^\/api\/admin\/members\/([^/]+)\/tier$/);
       if (req.method === "PATCH" && memberTierMatch) {
+        if (!guard("members:write")) return;
         const member = db.users.find((item) => item.id === memberTierMatch[1]);
         if (!member) return sendError(res, 404, "会员不存在。");
         const profile = db.memberProfiles.find((item) => item.userId === member.id);
@@ -1436,6 +1647,7 @@ async function handleApi(req, res, pathname) {
 
       const memberPointsMatch = pathname.match(/^\/api\/admin\/members\/([^/]+)\/points$/);
       if (req.method === "POST" && memberPointsMatch) {
+        if (!guard("points:write")) return;
         const member = db.users.find((item) => item.id === memberPointsMatch[1]);
         if (!member) return sendError(res, 404, "会员不存在。");
         const points = Math.trunc(Number(body.points || 0));
@@ -1470,6 +1682,7 @@ async function handleApi(req, res, pathname) {
       }
 
       if (req.method === "GET" && pathname === "/api/admin/orders") {
+        if (!guard("orders:read")) return;
         return sendJson(res, 200, {
           orders: db.orders
             .slice()
@@ -1480,6 +1693,7 @@ async function handleApi(req, res, pathname) {
 
       const orderStatusMatch = pathname.match(/^\/api\/admin\/orders\/([^/]+)\/status$/);
       if (req.method === "PATCH" && orderStatusMatch) {
+        if (!guard("orders:write")) return;
         const order = db.orders.find((item) => item.id === orderStatusMatch[1]);
         if (!order) return sendError(res, 404, "订单不存在。");
         const allowed = ["pending_payment", "paid", "processing", "shipped", "completed", "cancelled", "refunded"];
@@ -1511,10 +1725,12 @@ async function handleApi(req, res, pathname) {
       }
 
       if (req.method === "GET" && pathname === "/api/admin/member-tiers") {
+        if (!guard("tiers:read")) return;
         return sendJson(res, 200, { tiers: db.memberTiers });
       }
 
       if (req.method === "POST" && pathname === "/api/admin/member-tiers") {
+        if (!guard("tiers:write")) return;
         const code = String(body.code || "").trim().toLowerCase();
         const name = String(body.name || "").trim();
         if (!code || !name) return sendError(res, 400, "等级 code 和 name 必填。");
@@ -1548,6 +1764,7 @@ async function handleApi(req, res, pathname) {
 
       const tierMatch = pathname.match(/^\/api\/admin\/member-tiers\/([^/]+)$/);
       if (req.method === "PATCH" && tierMatch) {
+        if (!guard("tiers:write")) return;
         const tier = db.memberTiers.find((item) => item.id === tierMatch[1] || item.code === tierMatch[1]);
         if (!tier) return sendError(res, 404, "等级不存在。");
         const before = snapshot(tier);
@@ -1577,6 +1794,7 @@ async function handleApi(req, res, pathname) {
 
       const payMatch = pathname.match(/^\/api\/admin\/orders\/([^/]+)\/pay$/);
       if (req.method === "POST" && payMatch) {
+        if (!guard("orders:write")) return;
         const order = db.orders.find((item) => item.id === payMatch[1]);
         if (!order) return sendError(res, 404, "订单不存在。");
         if (order.status !== "pending_payment") return sendJson(res, 200, { order: orderPayload(db, order), alreadyProcessed: true });
@@ -1593,6 +1811,7 @@ async function handleApi(req, res, pathname) {
 
       const completeMatch = pathname.match(/^\/api\/admin\/orders\/([^/]+)\/complete$/);
       if (req.method === "POST" && completeMatch) {
+        if (!guard("orders:write")) return;
         const order = db.orders.find((item) => item.id === completeMatch[1]);
         if (!order) return sendError(res, 404, "订单不存在。");
         const before = orderPayload(db, order);
@@ -1608,6 +1827,7 @@ async function handleApi(req, res, pathname) {
 
       const refundMatch = pathname.match(/^\/api\/admin\/orders\/([^/]+)\/refund$/);
       if (req.method === "POST" && refundMatch) {
+        if (!guard("orders:write")) return;
         const order = db.orders.find((item) => item.id === refundMatch[1]);
         if (!order) return sendError(res, 404, "订单不存在。");
         const before = orderPayload(db, order);
@@ -1672,7 +1892,7 @@ export { server };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === modulePath) {
   server.listen(port, () => {
-    console.log(`Scent Archive server running at http://localhost:${port}`);
-    console.log(`Admin key: ${adminKey}`);
+    console.log(`Scent Atoll server running at http://localhost:${port}`);
+    console.log(`Admin login: ${seedAdminEmail}`);
   });
 }

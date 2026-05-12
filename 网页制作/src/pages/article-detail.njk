@@ -1,0 +1,28 @@
+---
+pagination:
+  data: catalog.articlesForPages
+  size: 1
+  alias: article
+permalink: "{{ article.pagePath }}"
+layout: layout.njk
+pageKey: "journal"
+mainClass: "page-shell"
+eleventyComputed:
+  title: "{{ article.title }} | 馥屿"
+  description: "{{ article.excerpt }}"
+  canonicalPath: "/{{ article.pagePath }}"
+  mainAttributes: "data-article-page data-entry-id=\"{{ article.id }}\""
+---
+<article class="article-detail">
+  <nav class="breadcrumb" aria-label="面包屑">
+    <a href="journal.html">Journal</a>
+    <span>/</span>
+    <span>{{ article.category }}</span>
+  </nav>
+  <p class="eyebrow">{{ article.category }} · {{ article.date }}</p>
+  <h1>{{ article.title }}</h1>
+  <div class="article-hero-image" style="--image: url('{{ article.image }}')"></div>
+  {% for paragraph in article.body %}
+    <p>{{ paragraph }}</p>
+  {% endfor %}
+</article>

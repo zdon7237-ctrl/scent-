@@ -1,5 +1,5 @@
 ---
-name: 气味档案 Scent Archive
+name: 馥屿 Scent Atoll
 description: 面向国内用户的小众香水买手店，结合编辑式选品、试香服务和清晰购买路径。
 colors:
   ink: "#1d211f"
@@ -94,7 +94,7 @@ components:
     padding: "5px 10px"
 ---
 
-# Design System: 气味档案 Scent Archive
+# Design System: 馥屿 Scent Atoll
 
 ## 1. Overview
 

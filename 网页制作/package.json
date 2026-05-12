@@ -1,10 +1,26 @@
 {
-  "name": "scent-archive-static",
+  "name": "scent-atoll-static",
   "version": "1.0.0",
   "private": true,
   "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "build": "node scripts/build-script.mjs && eleventy",
+    "build": "node scripts/build-site.mjs",
+    "build:public": "node scripts/build-public.mjs",
+    "check:deploy": "node scripts/check-deploy-config.mjs",
+    "check:env": "node scripts/check-launch-env.mjs",
+    "check:git-release": "node scripts/check-git-release.mjs",
+    "check:public": "node scripts/check-public-build.mjs",
+    "check:live": "node scripts/check-live.mjs",
+    "launch:check": "npm run build:public && npm run check:public && npm run check:deploy",
+    "launch:preflight": "npm test && npm run build && npm run launch:check",
+    "launch:ready": "npm run check:git-release && git diff --check -- :/ && npm run launch:preflight && npm run launch:strict",
+    "launch:status": "node scripts/launch-status.mjs",
+    "launch:strict": "npm run check:env && npm run build:public && node scripts/check-public-build.mjs --strict && npm run check:deploy",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:seed": "node scripts/seed.mjs",
     "prestart": "npm run build",
     "start": "node server/src/app.mjs",
     "serve": "eleventy --serve",
@@ -13,5 +29,8 @@
   "devDependencies": {
     "@11ty/eleventy": "^3.0.0",
     "esbuild": "^0.28.0"
+  },
+  "dependencies": {
+    "pg": "^8.20.0"
   }
 }
