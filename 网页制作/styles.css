@@ -218,8 +218,10 @@ button {
 }
 
 .site-search span {
+  flex: 0 0 auto;
   color: var(--muted);
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .site-search input {
