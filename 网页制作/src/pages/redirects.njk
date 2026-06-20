@@ -2,6 +2,7 @@
 permalink: _redirects
 eleventyExcludeFromCollections: true
 ---
+{% if site.isPublicBuild %}
 /admin.html /404.html 404
 /account.html /404.html 404
 /login.html /404.html 404
@@ -14,4 +15,5 @@ eleventyExcludeFromCollections: true
 /points-mall.html /404.html 404
 /points-item.html /404.html 404
 /points-redemptions.html /404.html 404
+{% endif %}
 /* /404.html 404

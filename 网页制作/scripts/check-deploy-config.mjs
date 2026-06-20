@@ -107,18 +107,30 @@ function checkNetlify(label, text, options = {}) {
   checkTomlHeaderSet(label, "/404.html", netlifyHeaderBlock(text, "/404.html"), true);
 }
 
-function checkVercel(label, config, expectedOutput) {
+function checkVercel(label, config, options = {}) {
+  const { expectedOutput, expectedBuildFragments = ["npm run launch:strict"], expectedRewriteDestination } = options;
   if (config.outputDirectory !== expectedOutput) {
     failures.push(`${label} outputDirectory should be ${expectedOutput}`);
   }
   if (!String(config.installCommand || "").includes("npm ci")) {
     failures.push(`${label} installCommand should run npm ci`);
   }
-  if (!String(config.buildCommand || "").includes("npm run launch:strict")) {
-    failures.push(`${label} buildCommand should run npm run launch:strict`);
+  for (const fragment of expectedBuildFragments) {
+    if (!String(config.buildCommand || "").includes(fragment)) {
+      failures.push(`${label} buildCommand should run ${fragment}`);
+    }
   }
   if (String(config.buildCommand || "").includes("npm run launch:ready")) {
     failures.push(`${label} buildCommand should not run npm run launch:ready; it is a local release gate`);
+  }
+  if (expectedRewriteDestination) {
+    const rewrites = Array.isArray(config.rewrites) ? config.rewrites : [];
+    const hasApiRewrite = rewrites.some((rewrite) => {
+      return rewrite.source === "/api/(.*)" && rewrite.destination === expectedRewriteDestination;
+    });
+    if (!hasApiRewrite) {
+      failures.push(`${label} should rewrite /api/(.*) to ${expectedRewriteDestination}`);
+    }
   }
   checkHeaderSet(label, "/(.*)", sourceHeaders(config, "/(.*)"));
   checkHeaderSet(label, "/cart.html", sourceHeaders(config, "/cart.html"), true);
@@ -223,10 +235,18 @@ const repoNetlify = await readRequired(path.join(repoRoot, "netlify.toml"));
 checkNetlify("netlify.toml", repoNetlify, { requireBase: true });
 
 const projectVercel = parseJson("网页制作/vercel.json", await readRequired(path.join(projectRoot, "vercel.json")));
-checkVercel("网页制作/vercel.json", projectVercel, "dist-public");
+checkVercel("网页制作/vercel.json", projectVercel, {
+  expectedOutput: "dist",
+  expectedBuildFragments: ["npm run check:env", "npm run db:migrate", "npm run db:seed", "npm run build"],
+  expectedRewriteDestination: "/api/[...path].mjs"
+});
 
 const repoVercel = parseJson("vercel.json", await readRequired(path.join(repoRoot, "vercel.json")));
-checkVercel("vercel.json", repoVercel, "网页制作/dist-public");
+checkVercel("vercel.json", repoVercel, {
+  expectedOutput: "网页制作/dist",
+  expectedBuildFragments: ["cd 网页制作", "npm run check:env", "npm run db:migrate", "npm run db:seed", "npm run build"],
+  expectedRewriteDestination: "/api/[...path].mjs"
+});
 if (!String(repoVercel.installCommand || "").includes("cd 网页制作")) {
   failures.push("vercel.json installCommand should install from 网页制作/");
 }

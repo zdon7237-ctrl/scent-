@@ -9,9 +9,9 @@
 把下面 3 项真实值发给开发 / 部署负责人即可继续严格上线检查：
 
 ```text
-SITE_URL=
-CONTACT_EMAIL=
-CONTACT_WECHAT=
+SITE_URL=https://scentatoll.com
+CONTACT_EMAIL=1244470336@qq.com
+CONTACT_WECHAT=xxx70336
 ```
 
 可选项如果暂时没有，可以先不填：
@@ -31,9 +31,9 @@ OG_IMAGE=
 
 | 变量 | 要填写的真实值 | 检查标准 |
 |---|---|---|
-| `SITE_URL` |  | 必须是正式 `https://` 域名根地址，不要带末尾 `/`、路径、查询参数或 `#`，例如 `https://www.example.com` |
-| `CONTACT_EMAIL` |  | 必须是可接收客服和隐私请求的邮箱 |
-| `CONTACT_WECHAT` |  | 必须是正式客服微信号或清晰的添加方式 |
+| `SITE_URL` | https://scentatoll.com | 必须是正式 `https://` 域名根地址，不要带末尾 `/`、路径、查询参数或 `#`，例如 `https://www.example.com` |
+| `CONTACT_EMAIL` | 1244470336@qq.com | 必须是可接收客服和隐私请求的邮箱 |
+| `CONTACT_WECHAT` | xxx70336 | 必须是正式客服微信号或清晰的添加方式 |
 
 ## 建议项
 
@@ -49,9 +49,9 @@ OG_IMAGE=
 填完后，在 Netlify、Vercel 或 Cloudflare Pages 的环境变量里设置：
 
 ```text
-SITE_URL=
-CONTACT_EMAIL=
-CONTACT_WECHAT=
+SITE_URL=https://scentatoll.com
+CONTACT_EMAIL=1244470336@qq.com
+CONTACT_WECHAT=xxx70336
 CUSTOMER_HOURS=12:00 - 20:00
 ```
 

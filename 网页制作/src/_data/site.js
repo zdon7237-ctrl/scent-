@@ -11,6 +11,7 @@ function trimTrailingSlash(value) {
 
 const url = trimTrailingSlash(envValue("SITE_URL", fallbackUrl));
 const shareImage = envValue("OG_IMAGE", `${url}/og-image.png`);
+const isPublicBuild = process.env.PUBLIC_BUILD === "true";
 
 function imageType(value) {
   const cleanValue = String(value || "").split("?")[0].split("#")[0].toLowerCase();
@@ -23,6 +24,7 @@ module.exports = {
   name: "馥屿 Scent Atoll",
   shortName: "馥屿",
   url,
+  isPublicBuild,
   isPlaceholderDomain: url.includes("example.com"),
   locale: "zh_CN",
   themeColor: "#f7f1e8",

@@ -1879,14 +1879,16 @@ async function serveStatic(req, res, pathname) {
   }
 }
 
-const server = createServer(async (req, res) => {
+export async function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (url.pathname.startsWith("/api/")) {
     await handleApi(req, res, url.pathname);
     return;
   }
   await serveStatic(req, res, url.pathname);
-});
+}
+
+const server = createServer(handleRequest);
 
 export { server };
 
