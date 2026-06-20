@@ -1,7 +1,7 @@
 {
   "buildCommand": "npm run check:env && npm run db:migrate && npm run db:seed && npm run build",
   "outputDirectory": "dist",
-  "installCommand": "npm ci",
+  "installCommand": "npm ci --include=dev",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/[...path].mjs" }
   ],

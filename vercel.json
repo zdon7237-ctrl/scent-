@@ -1,5 +1,5 @@
 {
-  "installCommand": "cd 网页制作 && npm ci",
+  "installCommand": "cd 网页制作 && npm ci --include=dev",
   "buildCommand": "cd 网页制作 && npm run check:env && npm run db:migrate && npm run db:seed && npm run build",
   "outputDirectory": "网页制作/dist",
   "rewrites": [
