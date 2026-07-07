@@ -14,19 +14,24 @@ import { cartStore } from "./cart-store.js";
 import { closeCart, openCart, renderCartPage, renderCartShell } from "./cart-ui.js";
 import {
   adminCancelRedemption,
+  adminAdjustProductInventory,
   adminCompleteOrder,
   adminCreateMallItem,
+  adminCreateProduct,
   adminGetAuditLogs,
   adminGetMembers,
   adminGetOrders,
   adminGetPoints,
   adminGetPointsMallItems,
+  adminGetProducts,
   adminGetPointsRedemptions,
   adminLogin,
   adminLogout,
   adminPayOrder,
   adminRefundOrder,
+  adminSetProductStatus,
   adminSetMallItemStatus,
+  adminUpdateProduct,
   adminUpdateRedemptionStatus,
   getCurrentAdmin
 } from "./admin-client.js";
@@ -154,6 +159,177 @@ if (hasCatalogData) {
     node.textContent = message;
     node.classList.toggle("is-error", type === "error");
     node.classList.toggle("is-success", type === "success");
+  }
+
+  function escapeHtml(value = "") {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  }
+
+  function productStatusLabel(status) {
+    return {
+      draft: "草稿",
+      active: "已上架",
+      inactive: "已下架",
+      archived: "已归档"
+    }[status] || status || "草稿";
+  }
+
+  function productImageLines(product = {}) {
+    return (product.images || [])
+      .map((image) => `${image.imageUrl}${image.alt && image.alt !== product.name ? ` | ${image.alt}` : ""}`)
+      .join("\n");
+  }
+
+  function productImagesFromText(text = "") {
+    return String(text || "")
+      .split("\n")
+      .map((line, index) => {
+        const [imageUrl, alt] = line.split("|").map((part) => part.trim());
+        return imageUrl ? { imageUrl, alt: alt || "", sortOrder: index + 1 } : null;
+      })
+      .filter(Boolean);
+  }
+
+  function adminProductPayload(form) {
+    const formData = new FormData(form);
+    const payload = {
+      name: formData.get("name"),
+      slug: formData.get("slug"),
+      brandName: formData.get("brandName"),
+      category: formData.get("category"),
+      country: formData.get("country"),
+      family: formData.get("family"),
+      volume: formData.get("volume"),
+      concentration: formData.get("concentration"),
+      sweetness: formData.get("sweetness"),
+      status: formData.get("status"),
+      statusTags: formData.get("statusTags"),
+      notes: formData.get("notes"),
+      scenes: formData.get("scenes"),
+      imageLayout: formData.get("imageLayout"),
+      description: formData.get("description"),
+      buyerNote: formData.get("buyerNote"),
+      bestFor: formData.get("bestFor"),
+      caution: formData.get("caution"),
+      topNotes: formData.get("topNotes"),
+      middleNotes: formData.get("middleNotes"),
+      baseNotes: formData.get("baseNotes"),
+      sku: formData.get("sku"),
+      variantName: formData.get("variantName") || "默认规格",
+      priceAmountYuan: Number(formData.get("priceAmountYuan") || 0),
+      stockQuantity: Number(formData.get("stockQuantity") || 0),
+      images: productImagesFromText(formData.get("images")),
+      reason: formData.get("reason") || "后台保存商品"
+    };
+    const variantId = formData.get("variantId");
+    if (variantId) payload.variantId = variantId;
+    return payload;
+  }
+
+  function adminProductForm(product = null) {
+    const variant = product?.primaryVariant || {};
+    const inventory = variant.inventory || {};
+    const isCreate = !product;
+    const id = product?.id || "";
+    return `
+      <form class="admin-product-form ${isCreate ? "" : "admin-product-edit"}" ${isCreate ? "data-admin-product-create" : `data-admin-product-edit="${escapeHtml(id)}"`}>
+        ${!isCreate ? `<input type="hidden" name="variantId" value="${escapeHtml(variant.id || "")}">` : ""}
+        <div class="admin-form-grid">
+          <label class="field-label">商品名<input name="name" value="${escapeHtml(product?.name || "")}" required></label>
+          <label class="field-label">Slug<input name="slug" value="${escapeHtml(product?.slug || "")}" placeholder="ruby-tea" required></label>
+          <label class="field-label">品牌<input name="brandName" value="${escapeHtml(product?.brandName || "")}"></label>
+          <label class="field-label">状态
+            <select name="status">
+              ${["draft", "active", "inactive", "archived"].map((status) => `<option value="${status}" ${product?.status === status || (!product && status === "draft") ? "selected" : ""}>${productStatusLabel(status)}</option>`).join("")}
+            </select>
+          </label>
+          <label class="field-label">价格<input name="priceAmountYuan" type="number" min="0" step="0.01" value="${escapeHtml(variant.priceAmountYuan || "")}"></label>
+          <label class="field-label">库存<input name="stockQuantity" type="number" min="0" step="1" value="${escapeHtml(inventory.quantityOnHand ?? "")}"></label>
+          <label class="field-label">SKU<input name="sku" value="${escapeHtml(variant.sku || "")}"></label>
+          <label class="field-label">规格<input name="variantName" value="${escapeHtml(variant.name || "默认规格")}"></label>
+          <label class="field-label">容量<input name="volume" value="${escapeHtml(product?.volume || "")}" placeholder="50ml"></label>
+          <label class="field-label">浓度<input name="concentration" value="${escapeHtml(product?.concentration || "")}" placeholder="EDP"></label>
+          <label class="field-label">香调家族<input name="family" value="${escapeHtml(product?.family || "")}"></label>
+          <label class="field-label">图片排版
+            <select name="imageLayout">
+              ${["grid", "editorial", "detail", "minimal"].map((layout) => `<option value="${layout}" ${(product?.imageLayout || "grid") === layout ? "selected" : ""}>${layout}</option>`).join("")}
+            </select>
+          </label>
+          <label class="field-label">分类<input name="category" value="${escapeHtml(product?.category || "fragrance")}"></label>
+          <label class="field-label">国家<input name="country" value="${escapeHtml(product?.country || "")}"></label>
+          <label class="field-label">甜度<input name="sweetness" value="${escapeHtml(product?.sweetness || "")}" placeholder="low / medium / high"></label>
+          <label class="field-label">标签<input name="statusTags" value="${escapeHtml((product?.statusTags || []).join("、"))}" placeholder="New、买手推荐"></label>
+          <label class="field-label admin-wide-field">香调<input name="notes" value="${escapeHtml((product?.notes || []).join("、"))}" placeholder="茶香、木质、麝香"></label>
+          <label class="field-label admin-wide-field">场景<input name="scenes" value="${escapeHtml((product?.scenes || []).join("、"))}" placeholder="daily、gift"></label>
+          <label class="field-label admin-wide-field">商品图 URL<textarea name="images" rows="4" placeholder="每行一张图，支持：URL | 图片说明">${escapeHtml(productImageLines(product || {}))}</textarea></label>
+          <label class="field-label admin-wide-field">描述<textarea name="description" rows="3">${escapeHtml(product?.description || "")}</textarea></label>
+          <label class="field-label admin-wide-field">买手点评<textarea name="buyerNote" rows="3">${escapeHtml(product?.buyerNote || "")}</textarea></label>
+          <label class="field-label">适合场景<input name="bestFor" value="${escapeHtml(product?.bestFor || "")}"></label>
+          <label class="field-label">盲买提醒<input name="caution" value="${escapeHtml(product?.caution || "")}"></label>
+          <label class="field-label">前调<input name="topNotes" value="${escapeHtml(product?.topNotes || "")}"></label>
+          <label class="field-label">中调<input name="middleNotes" value="${escapeHtml(product?.middleNotes || "")}"></label>
+          <label class="field-label">后调<input name="baseNotes" value="${escapeHtml(product?.baseNotes || "")}"></label>
+          <label class="field-label">备注<input name="reason" value="${isCreate ? "后台新增商品" : "后台更新商品"}"></label>
+        </div>
+        <div class="button-row">
+          <button class="button button-primary" type="submit">${isCreate ? "新增商品" : "保存商品"}</button>
+          ${!isCreate && product.status !== "active" ? `<button class="button button-secondary" type="button" data-admin-product-activate="${escapeHtml(id)}">上架</button>` : ""}
+          ${!isCreate && product.status === "active" ? `<button class="button button-secondary" type="button" data-admin-product-deactivate="${escapeHtml(id)}">下架</button>` : ""}
+          ${!isCreate && product.status !== "archived" ? `<button class="button button-secondary" type="button" data-admin-product-archive="${escapeHtml(id)}">归档</button>` : ""}
+        </div>
+      </form>
+    `;
+  }
+
+  function adminProductsMarkup(productsPayload) {
+    const products = productsPayload.products || [];
+    const summary = productsPayload.summary || {};
+    return `
+      <section class="admin-products-panel">
+        <div class="admin-panel-head">
+          <div>
+            <h2>商品上架与库存</h2>
+            <p>维护香水资料、图片排版、上下架状态和可售库存。</p>
+          </div>
+          <div class="admin-stat-row">
+            <span><strong>${summary.total || 0}</strong>全部</span>
+            <span><strong>${summary.active || 0}</strong>上架</span>
+            <span><strong>${summary.lowStock || 0}</strong>低库存</span>
+            <span><strong>${summary.outOfStock || 0}</strong>售罄</span>
+          </div>
+        </div>
+        <details class="admin-create-product" ${products.length ? "" : "open"}>
+          <summary>新增香水</summary>
+          ${adminProductForm()}
+        </details>
+        <div class="admin-product-list">
+          ${products.map((product) => `
+            <article class="admin-product-item">
+              <div class="admin-product-summary">
+                <div>
+                  <h3>${escapeHtml(product.name)}</h3>
+                  <p>${escapeHtml(product.slug)} · ${escapeHtml(product.brandName || "未填品牌")} · ${moneyText(product.priceAmountYuan)} · 库存 ${product.availableQuantity}</p>
+                </div>
+                <span class="status-badge">${productStatusLabel(product.status)}</span>
+                <span>${(product.images || []).length} 张图</span>
+              </div>
+              ${adminProductForm(product)}
+              ${product.primaryVariant ? `
+                <form class="admin-inventory-form" data-admin-inventory-form="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(product.primaryVariant.id)}">
+                  <label class="field-label">库存变动<input name="quantityDelta" type="number" step="1" placeholder="+5 或 -2" required></label>
+                  <label class="field-label">原因<input name="reason" value="后台库存调整"></label>
+                  <button class="button button-secondary" type="submit">调整库存</button>
+                </form>
+              ` : ""}
+            </article>
+          `).join("") || `<div class="empty-state">还没有商品。先新增一支香水，再补图片和库存。</div>`}
+        </div>
+      </section>
+    `;
   }
 
   function productCard(product, options = {}) {
@@ -989,18 +1165,19 @@ if (hasCatalogData) {
       return;
     }
     try {
-      const [members, orders, points, logs, mallItems, mallRedemptions] = await Promise.all([
+      const [members, orders, points, logs, mallItems, mallRedemptions, products] = await Promise.all([
         adminGetMembers(),
         adminGetOrders(),
         adminGetPoints(),
         adminGetAuditLogs(),
         adminGetPointsMallItems(),
-        adminGetPointsRedemptions()
+        adminGetPointsRedemptions(),
+        adminGetProducts()
       ]);
       mount.innerHTML = `
         <div class="section-heading">
           <p class="eyebrow">Admin</p>
-          <h2>会员与订单管理</h2>
+          <h2>运营后台</h2>
           <p>${session.admin.name || session.admin.email} · ${session.admin.role}</p>
           <div class="button-row">
             <button class="button button-secondary" type="button" data-admin-export>导出会员名单</button>
@@ -1008,6 +1185,7 @@ if (hasCatalogData) {
           </div>
         </div>
         <div class="admin-grid">
+          ${adminProductsMarkup(products)}
           <section>
             <h2>会员</h2>
             <div class="member-table">
@@ -1129,6 +1307,46 @@ if (hasCatalogData) {
         } catch (error) {
           showToast(error.message);
         }
+      });
+      $("[data-admin-product-create]", mount)?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        try {
+          await adminCreateProduct(adminProductPayload(form));
+          showToast("商品已新增。");
+          await renderAdminPage();
+        } catch (error) {
+          showToast(error.message);
+        }
+      });
+      $all("[data-admin-product-edit]", mount).forEach((form) => {
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          try {
+            await adminUpdateProduct(form.dataset.adminProductEdit, adminProductPayload(form));
+            showToast("商品已保存。");
+            await renderAdminPage();
+          } catch (error) {
+            showToast(error.message);
+          }
+        });
+      });
+      $all("[data-admin-inventory-form]", mount).forEach((form) => {
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const formData = new FormData(form);
+          try {
+            await adminAdjustProductInventory(form.dataset.adminInventoryForm, form.dataset.variantId, {
+              mode: "adjust",
+              quantityDelta: Number(formData.get("quantityDelta")),
+              reason: formData.get("reason") || "后台库存调整"
+            });
+            showToast("库存已调整。");
+            await renderAdminPage();
+          } catch (error) {
+            showToast(error.message);
+          }
+        });
       });
     } catch (error) {
       mount.innerHTML = `<div class="empty-state">${error.message}</div>`;
@@ -1288,6 +1506,9 @@ if (hasCatalogData) {
       const adminLogoutButton = event.target.closest("[data-admin-logout]");
       const adminMallActivate = event.target.closest("[data-admin-mall-activate]");
       const adminMallDeactivate = event.target.closest("[data-admin-mall-deactivate]");
+      const adminProductActivate = event.target.closest("[data-admin-product-activate]");
+      const adminProductDeactivate = event.target.closest("[data-admin-product-deactivate]");
+      const adminProductArchive = event.target.closest("[data-admin-product-archive]");
       const adminRedemptionStatus = event.target.closest("[data-admin-redemption-status]");
       const adminRedemptionCancel = event.target.closest("[data-admin-redemption-cancel]");
 
@@ -1360,6 +1581,20 @@ if (hasCatalogData) {
         try {
           await adminSetMallItemStatus(node.dataset.adminMallActivate || node.dataset.adminMallDeactivate, action);
           showToast(action === "activate" ? "积分商品已上架。" : "积分商品已下架。");
+          await renderAdminPage();
+        } catch (error) {
+          showToast(error.message);
+        }
+      }
+      if (adminProductActivate || adminProductDeactivate || adminProductArchive) {
+        const node = adminProductActivate || adminProductDeactivate || adminProductArchive;
+        const action = adminProductActivate ? "activate" : adminProductDeactivate ? "deactivate" : "archive";
+        try {
+          await adminSetProductStatus(
+            node.dataset.adminProductActivate || node.dataset.adminProductDeactivate || node.dataset.adminProductArchive,
+            action
+          );
+          showToast(action === "activate" ? "商品已上架。" : action === "deactivate" ? "商品已下架。" : "商品已归档。");
           await renderAdminPage();
         } catch (error) {
           showToast(error.message);

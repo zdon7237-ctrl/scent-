@@ -103,6 +103,121 @@ const specs = [
     dates: ["createdAt", "expiresAt", "lastSeenAt"]
   },
   {
+    key: "products",
+    table: "products",
+    order: "sort_order asc, created_at asc",
+    columns: {
+      id: "id",
+      slug: "slug",
+      name: "name",
+      brandName: "brand_name",
+      brandId: "brand_id",
+      category: "category",
+      country: "country",
+      status: "status",
+      description: "description",
+      volume: "volume",
+      concentration: "concentration",
+      stockLabel: "stock_label",
+      year: "year",
+      perfumer: "perfumer",
+      family: "family",
+      notes: "notes",
+      scenes: "scenes",
+      mood: "mood",
+      sweetness: "sweetness",
+      statusTags: "status_tags",
+      heroImageUrl: "hero_image_url",
+      imageLayout: "image_layout",
+      buyerNote: "buyer_note",
+      bestFor: "best_for",
+      caution: "caution",
+      topNotes: "top_notes",
+      middleNotes: "middle_notes",
+      baseNotes: "base_notes",
+      sortOrder: "sort_order",
+      createdAt: "created_at",
+      updatedAt: "updated_at"
+    },
+    dates: ["createdAt", "updatedAt"]
+  },
+  {
+    key: "productVariants",
+    table: "product_variants",
+    order: "created_at asc",
+    columns: {
+      id: "id",
+      productId: "product_id",
+      sku: "sku",
+      name: "name",
+      priceAmount: "price_amount",
+      status: "status",
+      createdAt: "created_at",
+      updatedAt: "updated_at"
+    },
+    dates: ["createdAt", "updatedAt"]
+  },
+  {
+    key: "productImages",
+    table: "product_images",
+    order: "sort_order asc, created_at asc",
+    columns: {
+      id: "id",
+      productId: "product_id",
+      imageUrl: "image_url",
+      alt: "alt",
+      role: "role",
+      sortOrder: "sort_order",
+      createdAt: "created_at"
+    },
+    dates: ["createdAt"]
+  },
+  {
+    key: "inventoryItems",
+    table: "inventory_items",
+    order: "created_at asc",
+    columns: {
+      id: "id",
+      variantId: "variant_id",
+      quantityOnHand: "quantity_on_hand",
+      quantityReserved: "quantity_reserved",
+      createdAt: "created_at",
+      updatedAt: "updated_at"
+    },
+    dates: ["createdAt", "updatedAt"]
+  },
+  {
+    key: "inventoryMovements",
+    table: "inventory_movements",
+    order: "created_at asc",
+    columns: {
+      id: "id",
+      inventoryItemId: "inventory_item_id",
+      quantityDelta: "quantity_delta",
+      reason: "reason",
+      referenceType: "reference_type",
+      referenceId: "reference_id",
+      createdAt: "created_at"
+    },
+    dates: ["createdAt"]
+  },
+  {
+    key: "stockReservations",
+    table: "stock_reservations",
+    order: "created_at asc",
+    columns: {
+      id: "id",
+      inventoryItemId: "inventory_item_id",
+      orderId: "order_id",
+      quantity: "quantity",
+      status: "status",
+      expiresAt: "expires_at",
+      createdAt: "created_at",
+      updatedAt: "updated_at"
+    },
+    dates: ["expiresAt", "createdAt", "updatedAt"]
+  },
+  {
     key: "memberProfiles",
     table: "member_profiles",
     order: "created_at asc",
@@ -323,6 +438,11 @@ const specs = [
 ];
 
 const deleteOrder = [
+  "stock_reservations",
+  "inventory_movements",
+  "inventory_items",
+  "product_images",
+  "product_variants",
   "coupon_redemptions",
   "coupons",
   "points_redemption_items",
@@ -336,6 +456,7 @@ const deleteOrder = [
   "admin_sessions",
   "sessions",
   "operation_logs",
+  "products",
   "admin_users",
   "users",
   "member_tiers"
@@ -347,6 +468,12 @@ const writeOrder = [
   "adminUsers",
   "sessions",
   "adminSessions",
+  "products",
+  "productVariants",
+  "productImages",
+  "inventoryItems",
+  "inventoryMovements",
+  "stockReservations",
   "memberProfiles",
   "orders",
   "orderItems",

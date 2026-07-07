@@ -62,7 +62,8 @@ textarea:focus-visible {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   letter-spacing: 0;
 }
@@ -1366,7 +1367,8 @@ h3 {
 }
 
 input,
-select {
+select,
+textarea {
   min-height: 42px;
   width: 100%;
   border: 1px solid var(--line);
@@ -1374,6 +1376,10 @@ select {
   background: var(--white);
   color: var(--ink);
   padding: 9px 11px;
+}
+
+textarea {
+  resize: vertical;
 }
 
 .filter-group h2 {
@@ -2037,6 +2043,124 @@ select {
   gap: 20px;
 }
 
+.admin-products-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 18px;
+}
+
+.admin-panel-head,
+.admin-product-summary,
+.admin-inventory-form {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-panel-head h2,
+.admin-product-summary h3 {
+  margin: 0;
+}
+
+.admin-panel-head p,
+.admin-product-summary p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.admin-stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(74px, 1fr));
+  gap: 8px;
+}
+
+.admin-stat-row span {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.admin-stat-row strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.admin-create-product {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+}
+
+.admin-create-product summary {
+  padding: 14px 16px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.admin-product-list {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-product-item {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+}
+
+.admin-product-summary {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-product-summary > div {
+  min-width: 0;
+}
+
+.admin-product-summary p {
+  overflow-wrap: anywhere;
+}
+
+.admin-product-form {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.admin-product-edit {
+  padding: 0;
+}
+
+.admin-form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-wide-field {
+  grid-column: span 2;
+}
+
+.admin-inventory-form {
+  align-items: end;
+  justify-content: flex-start;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.admin-inventory-form .field-label {
+  max-width: 240px;
+}
+
 .mall-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2451,9 +2575,29 @@ button:disabled,
   .member-dashboard,
   .member-policy-list,
   .admin-grid,
+  .admin-form-grid,
   .mall-grid,
   .mall-detail {
     grid-template-columns: 1fr;
+  }
+
+  .admin-panel-head,
+  .admin-product-summary,
+  .admin-inventory-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-wide-field {
+    grid-column: auto;
+  }
+
+  .admin-stat-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-inventory-form .field-label {
+    max-width: none;
   }
 
   .member-table article,

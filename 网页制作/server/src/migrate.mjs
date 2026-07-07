@@ -108,6 +108,30 @@ create table if not exists products (
   updated_at timestamptz not null default now()
 );
 
+alter table products add column if not exists brand_id text;
+alter table products add column if not exists category text;
+alter table products add column if not exists country text;
+alter table products add column if not exists volume text;
+alter table products add column if not exists concentration text;
+alter table products add column if not exists stock_label text;
+alter table products add column if not exists year text;
+alter table products add column if not exists perfumer text;
+alter table products add column if not exists family text;
+alter table products add column if not exists notes jsonb not null default '[]'::jsonb;
+alter table products add column if not exists scenes jsonb not null default '[]'::jsonb;
+alter table products add column if not exists mood jsonb not null default '[]'::jsonb;
+alter table products add column if not exists sweetness text;
+alter table products add column if not exists status_tags jsonb not null default '[]'::jsonb;
+alter table products add column if not exists hero_image_url text;
+alter table products add column if not exists image_layout text not null default 'grid';
+alter table products add column if not exists buyer_note text;
+alter table products add column if not exists best_for text;
+alter table products add column if not exists caution text;
+alter table products add column if not exists top_notes text;
+alter table products add column if not exists middle_notes text;
+alter table products add column if not exists base_notes text;
+alter table products add column if not exists sort_order integer not null default 0;
+
 create table if not exists product_variants (
   id text primary key,
   product_id text not null references products(id) on delete cascade,
@@ -127,6 +151,8 @@ create table if not exists product_images (
   sort_order integer not null default 0,
   created_at timestamptz not null default now()
 );
+
+alter table product_images add column if not exists role text not null default 'gallery';
 
 create table if not exists inventory_items (
   id text primary key,

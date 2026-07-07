@@ -409,6 +409,129 @@ describe("server API business rules", { concurrency: false }, () => {
     assert.equal(log.actorRole, "owner");
   });
 
+  it("lets owner admins manage products, images, listing status, and inventory", async () => {
+    const blocked = await adminApi("/api/admin/products", {
+      method: "POST",
+      expectedStatus: 400,
+      body: {
+        name: "Blocked Active Product",
+        slug: "blocked-active-product",
+        status: "active",
+        priceAmountYuan: 880,
+        stockQuantity: 3,
+        sku: "blocked-active-product"
+      }
+    });
+    assert.match(blocked.payload.error, /商品图/);
+
+    const created = await adminApi("/api/admin/products", {
+      method: "POST",
+      expectedStatus: 201,
+      body: {
+        name: "Ruby Test Tea",
+        slug: "ruby-test-tea",
+        brandName: "P. Seven",
+        category: "fragrance",
+        family: "东方茶香",
+        notes: "茶香、木质",
+        scenes: "daily、gift",
+        statusTags: "New、买手推荐",
+        description: "测试用商品。",
+        buyerNote: "后台 API 测试商品。",
+        imageLayout: "editorial",
+        sku: "ruby-test-tea-66ml",
+        variantName: "66ml",
+        priceAmountYuan: 520,
+        stockQuantity: 6,
+        status: "active",
+        images: [
+          {
+            imageUrl: "https://images.unsplash.com/photo-1615634260167-c8cdede054de?auto=format&fit=crop&w=1200&q=82",
+            alt: "Ruby Test Tea 商品图"
+          }
+        ],
+        reason: "product admin api test"
+      }
+    });
+    assert.equal(created.payload.product.status, "active");
+    assert.equal(created.payload.product.availableQuantity, 6);
+    assert.equal(created.payload.product.priceAmountYuan, 520);
+    assert.equal(created.payload.product.images.length, 1);
+    assert.equal(created.payload.product.notes[0], "茶香");
+
+    const productId = created.payload.product.id;
+    const variantId = created.payload.product.primaryVariant.id;
+    const adjusted = await adminApi(`/api/admin/products/${productId}/variants/${variantId}/inventory`, {
+      method: "POST",
+      expectedStatus: 200,
+      body: {
+        mode: "adjust",
+        quantityDelta: -2,
+        reason: "manual stock correction"
+      }
+    });
+    assert.equal(adjusted.payload.product.availableQuantity, 4);
+    assert.equal(adjusted.payload.movement.quantityDelta, -2);
+
+    const updated = await adminApi(`/api/admin/products/${productId}`, {
+      method: "PATCH",
+      expectedStatus: 200,
+      body: {
+        name: "Ruby Test Tea Updated",
+        status: "inactive",
+        stockQuantity: 8,
+        priceAmountYuan: 530,
+        variantId,
+        images: [
+          { imageUrl: "https://example.com/ruby-test-tea-1.jpg", alt: "主图" },
+          { imageUrl: "https://example.com/ruby-test-tea-2.jpg", alt: "细节图" }
+        ],
+        reason: "product update api test"
+      }
+    });
+    assert.equal(updated.payload.product.name, "Ruby Test Tea Updated");
+    assert.equal(updated.payload.product.status, "inactive");
+    assert.equal(updated.payload.product.availableQuantity, 8);
+    assert.equal(updated.payload.product.priceAmountYuan, 530);
+    assert.equal(updated.payload.product.images.length, 2);
+
+    const activated = await adminApi(`/api/admin/products/${productId}/activate`, {
+      method: "POST",
+      expectedStatus: 200
+    });
+    assert.equal(activated.payload.product.status, "active");
+
+    const archived = await adminApi(`/api/admin/products/${productId}/archive`, {
+      method: "POST",
+      expectedStatus: 200
+    });
+    assert.equal(archived.payload.product.status, "archived");
+
+    const listed = await adminApi("/api/admin/products", { expectedStatus: 200 });
+    assert.ok(listed.payload.products.some((product) => product.id === productId));
+
+    const logs = await adminApi("/api/admin/audit-logs", { expectedStatus: 200 });
+    assert.ok(logs.payload.logs.some((item) => item.action === "adjust_product_inventory" && item.entityId === productId));
+    assert.ok(logs.payload.logs.some((item) => item.action === "archive_product" && item.entityId === productId));
+  });
+
+  it("does not expose product operations to support admins", async () => {
+    const cookie = await supportAdminCookie();
+    await api("/api/admin/products", {
+      cookie,
+      expectedStatus: 403
+    });
+    await api("/api/admin/products", {
+      method: "POST",
+      cookie,
+      expectedStatus: 403,
+      body: {
+        name: "Support Blocked Product",
+        slug: "support-blocked-product"
+      }
+    });
+  });
+
   it("uses only x-webhook-secret for payment webhooks", async () => {
     await api("/api/webhooks/payment", {
       method: "POST",

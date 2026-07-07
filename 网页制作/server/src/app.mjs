@@ -37,6 +37,8 @@ const adminPermissionsByRole = {
     "admin:export",
     "orders:read",
     "orders:write",
+    "products:read",
+    "products:write",
     "members:read",
     "members:write",
     "points:read",
@@ -53,6 +55,8 @@ const adminPermissionsByRole = {
     "admin:export",
     "orders:read",
     "orders:write",
+    "products:read",
+    "products:write",
     "members:read",
     "members:write",
     "points:read",
@@ -255,6 +259,12 @@ function defaultDb() {
     sessions: [],
     adminUsers: [],
     adminSessions: [],
+    products: [],
+    productVariants: [],
+    productImages: [],
+    inventoryItems: [],
+    inventoryMovements: [],
+    stockReservations: [],
     coupons: [],
     couponRedemptions: []
   };
@@ -277,6 +287,12 @@ function normalizeDb(db) {
     "sessions",
     "adminUsers",
     "adminSessions",
+    "products",
+    "productVariants",
+    "productImages",
+    "inventoryItems",
+    "inventoryMovements",
+    "stockReservations",
     "coupons",
     "couponRedemptions"
   ].forEach((key) => {
@@ -624,6 +640,258 @@ function profilePayload(db, user) {
     amountToNextTier,
     amountToNextTierYuan: money.toYuan(amountToNextTier)
   };
+}
+
+const allowedProductStatuses = ["draft", "active", "inactive", "archived"];
+
+function cleanText(value) {
+  return String(value ?? "").trim();
+}
+
+function optionalText(value) {
+  const text = cleanText(value);
+  return text || null;
+}
+
+function listValue(value) {
+  if (Array.isArray(value)) return value.map(cleanText).filter(Boolean);
+  return cleanText(value)
+    .split(/[\n,，、]/)
+    .map(cleanText)
+    .filter(Boolean);
+}
+
+function productByIdOrSlug(db, id) {
+  const key = cleanText(id);
+  return db.products.find((item) => item.id === key || item.slug === key) || null;
+}
+
+function inventoryForVariant(db, variantId) {
+  return db.inventoryItems.find((item) => item.variantId === variantId) || null;
+}
+
+function ensureInventoryItem(db, variantId) {
+  let inventory = inventoryForVariant(db, variantId);
+  if (!inventory) {
+    inventory = {
+      id: randomUUID(),
+      variantId,
+      quantityOnHand: 0,
+      quantityReserved: 0,
+      createdAt: now(),
+      updatedAt: now()
+    };
+    db.inventoryItems.push(inventory);
+  }
+  return inventory;
+}
+
+function variantPayload(db, variant) {
+  const inventory = inventoryForVariant(db, variant.id);
+  const quantityOnHand = Math.max(0, Math.trunc(Number(inventory?.quantityOnHand || 0)));
+  const quantityReserved = Math.max(0, Math.trunc(Number(inventory?.quantityReserved || 0)));
+  return {
+    ...variant,
+    priceAmount: Math.max(0, Math.trunc(Number(variant.priceAmount || 0))),
+    priceAmountYuan: money.toYuan(variant.priceAmount),
+    inventory: inventory
+      ? {
+          ...inventory,
+          quantityOnHand,
+          quantityReserved,
+          availableQuantity: Math.max(0, quantityOnHand - quantityReserved)
+        }
+      : {
+          id: null,
+          variantId: variant.id,
+          quantityOnHand: 0,
+          quantityReserved: 0,
+          availableQuantity: 0
+        }
+  };
+}
+
+function productPayload(db, product) {
+  const variants = db.productVariants
+    .filter((item) => item.productId === product.id)
+    .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+    .map((item) => variantPayload(db, item));
+  const images = db.productImages
+    .filter((item) => item.productId === product.id)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+  const activeVariants = variants.filter((item) => item.status === "active");
+  const availableQuantity = activeVariants.reduce((sum, item) => sum + Number(item.inventory.availableQuantity || 0), 0);
+  const primaryVariant = activeVariants[0] || variants[0] || null;
+  return {
+    ...product,
+    notes: Array.isArray(product.notes) ? product.notes : [],
+    scenes: Array.isArray(product.scenes) ? product.scenes : [],
+    mood: Array.isArray(product.mood) ? product.mood : [],
+    statusTags: Array.isArray(product.statusTags) ? product.statusTags : [],
+    images,
+    variants,
+    primaryVariant,
+    primaryImage: product.heroImageUrl || images[0]?.imageUrl || "",
+    priceAmount: primaryVariant ? primaryVariant.priceAmount : 0,
+    priceAmountYuan: primaryVariant ? primaryVariant.priceAmountYuan : 0,
+    availableQuantity,
+    isListed: product.status === "active",
+    canPurchase: product.status === "active" && availableQuantity > 0 && Number(primaryVariant?.priceAmount || 0) > 0
+  };
+}
+
+function productActivationError(db, product) {
+  const payload = productPayload(db, product);
+  const activeVariant = payload.variants.find((item) => item.status === "active");
+  if (!cleanText(product.name)) return "商品名称必填，不能上架。";
+  if (!cleanText(product.slug)) return "商品链接 slug 必填，不能上架。";
+  if (!activeVariant) return "至少需要一个启用规格，才能上架。";
+  if (Number(activeVariant.priceAmount || 0) <= 0) return "启用规格需要设置价格，才能上架。";
+  if (payload.availableQuantity <= 0) return "可售库存为 0，不能上架。";
+  if (!payload.primaryImage) return "至少需要一张商品图，才能上架。";
+  return "";
+}
+
+function applyProductFields(db, product, body, { isCreate = false } = {}) {
+  if (isCreate || "slug" in body) {
+    const slug = cleanText(body.slug).toLowerCase();
+    if (!slug) throw new Error("商品 slug 必填。");
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error("商品 slug 只能使用小写英文、数字和连字符。");
+    if (db.products.some((item) => item.id !== product.id && item.slug === slug)) throw new Error("商品 slug 已存在。");
+    product.slug = slug;
+  }
+  if (isCreate || "name" in body) {
+    product.name = cleanText(body.name);
+    if (!product.name) throw new Error("商品名称必填。");
+  }
+  if ("brandName" in body || "brand" in body) product.brandName = optionalText(body.brandName ?? body.brand);
+  if ("brandId" in body) product.brandId = optionalText(body.brandId);
+  if ("category" in body) product.category = optionalText(body.category);
+  if ("country" in body) product.country = optionalText(body.country);
+  if ("description" in body) product.description = optionalText(body.description);
+  if ("volume" in body) product.volume = optionalText(body.volume);
+  if ("concentration" in body) product.concentration = optionalText(body.concentration);
+  if ("stockLabel" in body) product.stockLabel = optionalText(body.stockLabel);
+  if ("year" in body) product.year = optionalText(body.year);
+  if ("perfumer" in body) product.perfumer = optionalText(body.perfumer);
+  if ("family" in body) product.family = optionalText(body.family);
+  if ("notes" in body) product.notes = listValue(body.notes);
+  if ("scenes" in body) product.scenes = listValue(body.scenes);
+  if ("mood" in body) product.mood = listValue(body.mood);
+  if ("sweetness" in body) product.sweetness = optionalText(body.sweetness);
+  if ("statusTags" in body || "tags" in body) product.statusTags = listValue(body.statusTags ?? body.tags);
+  if ("heroImageUrl" in body || "image" in body) product.heroImageUrl = optionalText(body.heroImageUrl ?? body.image);
+  if ("imageLayout" in body) product.imageLayout = cleanText(body.imageLayout) || "grid";
+  if ("buyerNote" in body || "buyer" in body) product.buyerNote = optionalText(body.buyerNote ?? body.buyer);
+  if ("bestFor" in body) product.bestFor = optionalText(body.bestFor);
+  if ("caution" in body) product.caution = optionalText(body.caution);
+  if ("topNotes" in body || "top" in body) product.topNotes = optionalText(body.topNotes ?? body.top);
+  if ("middleNotes" in body || "middle" in body) product.middleNotes = optionalText(body.middleNotes ?? body.middle);
+  if ("baseNotes" in body || "base" in body) product.baseNotes = optionalText(body.baseNotes ?? body.base);
+  if ("sortOrder" in body) product.sortOrder = Math.trunc(Number(body.sortOrder || 0));
+  if ("status" in body) {
+    const status = cleanText(body.status || "draft");
+    if (!allowedProductStatuses.includes(status)) throw new Error("商品状态不合法。");
+    product.status = status;
+  }
+  product.updatedAt = now();
+}
+
+function imageInputs(value) {
+  if (Array.isArray(value)) return value;
+  return listValue(value).map((imageUrl) => ({ imageUrl }));
+}
+
+function replaceProductImages(db, product, images) {
+  const parsed = imageInputs(images)
+    .map((entry, index) => ({
+      id: cleanText(entry.id) || randomUUID(),
+      productId: product.id,
+      imageUrl: cleanText(entry.imageUrl || entry.url || entry.image),
+      alt: optionalText(entry.alt) || product.name,
+      role: cleanText(entry.role || (index === 0 ? "hero" : "gallery")) || "gallery",
+      sortOrder: Math.trunc(Number(entry.sortOrder ?? index + 1)),
+      createdAt: entry.createdAt || now()
+    }))
+    .filter((entry) => entry.imageUrl);
+  db.productImages = db.productImages.filter((item) => item.productId !== product.id);
+  db.productImages.push(...parsed);
+  if (!product.heroImageUrl && parsed[0]) product.heroImageUrl = parsed[0].imageUrl;
+  product.updatedAt = now();
+}
+
+function updatePrimaryVariant(db, product, body, { isCreate = false } = {}) {
+  const explicitVariantObject = body.variant && typeof body.variant === "object";
+  const variantInput = explicitVariantObject ? body.variant : body;
+  const hasVariantFields = isCreate || ["variantId", "variantName", "sku", "priceAmount", "priceAmountYuan", "priceYuan", "variantStatus"].some((key) => key in body || key in variantInput);
+  if (!hasVariantFields) return null;
+  const requestedId = cleanText(variantInput.variantId || variantInput.id);
+  let variant = requestedId
+    ? db.productVariants.find((item) => item.id === requestedId && item.productId === product.id)
+    : db.productVariants.find((item) => item.productId === product.id);
+  if (!variant) {
+    variant = {
+      id: requestedId || randomUUID(),
+      productId: product.id,
+      sku: null,
+      name: "默认规格",
+      priceAmount: 0,
+      status: "active",
+      createdAt: now(),
+      updatedAt: now()
+    };
+    db.productVariants.push(variant);
+  }
+  if ("sku" in variantInput) {
+    const sku = optionalText(variantInput.sku);
+    if (sku && db.productVariants.some((item) => item.id !== variant.id && item.sku === sku)) throw new Error("商品 SKU 已存在。");
+    variant.sku = sku;
+  }
+  if ("variantName" in variantInput || (explicitVariantObject && "name" in variantInput)) {
+    variant.name = cleanText(variantInput.variantName || variantInput.name || "默认规格");
+  }
+  if ("priceAmountYuan" in variantInput || "priceYuan" in variantInput) {
+    variant.priceAmount = Math.max(0, money.fromYuan(variantInput.priceAmountYuan ?? variantInput.priceYuan));
+  } else if ("priceAmount" in variantInput) {
+    variant.priceAmount = Math.max(0, Math.trunc(Number(variantInput.priceAmount || 0)));
+  }
+  if ("variantStatus" in variantInput || (explicitVariantObject && "status" in variantInput)) {
+    const status = cleanText(variantInput.variantStatus || variantInput.status || "active");
+    if (!["active", "inactive", "archived"].includes(status)) throw new Error("规格状态不合法。");
+    variant.status = status;
+  }
+  variant.updatedAt = now();
+  ensureInventoryItem(db, variant.id);
+  return variant;
+}
+
+function adjustInventory(db, variantId, body) {
+  const variant = db.productVariants.find((item) => item.id === variantId);
+  if (!variant) throw new Error("商品规格不存在。");
+  const inventory = ensureInventoryItem(db, variantId);
+  const before = snapshot(inventory);
+  const reserved = Math.max(0, Math.trunc(Number(inventory.quantityReserved || 0)));
+  const mode = cleanText(body.mode || ("quantityOnHand" in body || "quantity" in body ? "set" : "adjust"));
+  const target = mode === "set"
+    ? Math.max(0, Math.trunc(Number(body.quantityOnHand ?? body.quantity ?? 0)))
+    : Math.max(0, Math.trunc(Number(inventory.quantityOnHand || 0)) + Math.trunc(Number(body.quantityDelta ?? body.delta ?? 0)));
+  const delta = target - Math.max(0, Math.trunc(Number(inventory.quantityOnHand || 0)));
+  if (target < reserved) throw new Error("现货库存不能低于已预留库存。");
+  if (!delta) return { inventory, movement: null, before };
+  inventory.quantityOnHand = target;
+  inventory.quantityReserved = reserved;
+  inventory.updatedAt = now();
+  const movement = {
+    id: randomUUID(),
+    inventoryItemId: inventory.id,
+    quantityDelta: delta,
+    reason: cleanText(body.reason || "后台库存调整"),
+    referenceType: cleanText(body.referenceType || "admin"),
+    referenceId: optionalText(body.referenceId),
+    createdAt: now()
+  };
+  db.inventoryMovements.push(movement);
+  return { inventory, movement, before };
 }
 
 function loadCatalog() {
@@ -1384,6 +1652,174 @@ async function handleApi(req, res, pathname) {
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, 200)
         });
+      }
+
+      if (req.method === "GET" && pathname === "/api/admin/products") {
+        if (!guard("products:read")) return;
+        const products = db.products
+          .slice()
+          .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
+          .map((item) => productPayload(db, item));
+        return sendJson(res, 200, {
+          products,
+          summary: {
+            total: products.length,
+            active: products.filter((item) => item.status === "active").length,
+            draft: products.filter((item) => item.status === "draft").length,
+            lowStock: products.filter((item) => item.availableQuantity > 0 && item.availableQuantity <= 3).length,
+            outOfStock: products.filter((item) => item.availableQuantity <= 0).length
+          }
+        });
+      }
+
+      if (req.method === "POST" && pathname === "/api/admin/products") {
+        if (!guard("products:write")) return;
+        const product = {
+          id: randomUUID(),
+          slug: "",
+          name: "",
+          brandName: null,
+          brandId: null,
+          category: null,
+          country: null,
+          status: "draft",
+          description: null,
+          volume: null,
+          concentration: null,
+          stockLabel: null,
+          year: null,
+          perfumer: null,
+          family: null,
+          notes: [],
+          scenes: [],
+          mood: [],
+          sweetness: null,
+          statusTags: [],
+          heroImageUrl: null,
+          imageLayout: "grid",
+          buyerNote: null,
+          bestFor: null,
+          caution: null,
+          topNotes: null,
+          middleNotes: null,
+          baseNotes: null,
+          sortOrder: Math.trunc(Number(body.sortOrder || db.products.length + 1)),
+          createdAt: now(),
+          updatedAt: now()
+        };
+        db.products.push(product);
+        applyProductFields(db, product, body, { isCreate: true });
+        const variant = updatePrimaryVariant(db, product, body, { isCreate: true });
+        if ("images" in body || "imageUrls" in body) replaceProductImages(db, product, body.images ?? body.imageUrls);
+        if (variant && ("stockQuantity" in body || "quantityOnHand" in body || "quantity" in body || "quantityDelta" in body)) {
+          adjustInventory(db, variant.id, {
+            mode: "quantityDelta" in body ? "adjust" : "set",
+            quantity: body.stockQuantity ?? body.quantityOnHand ?? body.quantity,
+            quantityDelta: body.quantityDelta,
+            reason: body.reason || "新增商品初始库存"
+          });
+        }
+        if (product.status === "active") {
+          const activationError = productActivationError(db, product);
+          if (activationError) throw new Error(activationError);
+        }
+        logAdminOperation(db, req, "create_product", "product", product.id, null, productPayload(db, product), body.reason || "新增商品");
+        await writeDb(db);
+        return sendJson(res, 201, { product: productPayload(db, product) });
+      }
+
+      const productStatusMatch = pathname.match(/^\/api\/admin\/products\/([^/]+)\/(activate|deactivate|archive)$/);
+      if (req.method === "POST" && productStatusMatch) {
+        if (!guard("products:write")) return;
+        const product = productByIdOrSlug(db, decodeURIComponent(productStatusMatch[1]));
+        if (!product) return sendError(res, 404, "商品不存在。");
+        const before = productPayload(db, product);
+        const action = productStatusMatch[2];
+        if (action === "activate") {
+          const activationError = productActivationError(db, product);
+          if (activationError) return sendError(res, 400, activationError);
+          product.status = "active";
+        } else if (action === "deactivate") {
+          product.status = "inactive";
+        } else {
+          product.status = "archived";
+        }
+        product.updatedAt = now();
+        logAdminOperation(
+          db,
+          req,
+          action === "activate" ? "activate_product" : action === "deactivate" ? "deactivate_product" : "archive_product",
+          "product",
+          product.id,
+          before,
+          productPayload(db, product),
+          body.reason || (action === "activate" ? "上架商品" : action === "deactivate" ? "下架商品" : "归档商品")
+        );
+        await writeDb(db);
+        return sendJson(res, 200, { product: productPayload(db, product) });
+      }
+
+      const productInventoryMatch = pathname.match(/^\/api\/admin\/products\/([^/]+)\/variants\/([^/]+)\/inventory$/);
+      if (req.method === "POST" && productInventoryMatch) {
+        if (!guard("products:write")) return;
+        const product = productByIdOrSlug(db, decodeURIComponent(productInventoryMatch[1]));
+        if (!product) return sendError(res, 404, "商品不存在。");
+        const variantId = decodeURIComponent(productInventoryMatch[2]);
+        const variant = db.productVariants.find((item) => item.id === variantId && item.productId === product.id);
+        if (!variant) return sendError(res, 404, "商品规格不存在。");
+        const before = productPayload(db, product);
+        const result = adjustInventory(db, variant.id, body);
+        product.stockLabel = body.stockLabel ? cleanText(body.stockLabel) : product.stockLabel;
+        product.updatedAt = now();
+        logAdminOperation(
+          db,
+          req,
+          "adjust_product_inventory",
+          "product",
+          product.id,
+          before,
+          productPayload(db, product),
+          body.reason || "后台库存调整"
+        );
+        await writeDb(db);
+        return sendJson(res, 200, {
+          product: productPayload(db, product),
+          inventory: result.inventory,
+          movement: result.movement
+        });
+      }
+
+      const productMatch = pathname.match(/^\/api\/admin\/products\/([^/]+)$/);
+      if (req.method === "GET" && productMatch) {
+        if (!guard("products:read")) return;
+        const product = productByIdOrSlug(db, decodeURIComponent(productMatch[1]));
+        if (!product) return sendError(res, 404, "商品不存在。");
+        return sendJson(res, 200, { product: productPayload(db, product) });
+      }
+
+      if (req.method === "PATCH" && productMatch) {
+        if (!guard("products:write")) return;
+        const product = productByIdOrSlug(db, decodeURIComponent(productMatch[1]));
+        if (!product) return sendError(res, 404, "商品不存在。");
+        const before = productPayload(db, product);
+        applyProductFields(db, product, body);
+        const variant = updatePrimaryVariant(db, product, body);
+        if ("images" in body || "imageUrls" in body) replaceProductImages(db, product, body.images ?? body.imageUrls);
+        if (variant && ("stockQuantity" in body || "quantityOnHand" in body || "quantity" in body || "quantityDelta" in body)) {
+          adjustInventory(db, variant.id, {
+            mode: "quantityDelta" in body ? "adjust" : "set",
+            quantity: body.stockQuantity ?? body.quantityOnHand ?? body.quantity,
+            quantityDelta: body.quantityDelta,
+            reason: body.reason || "后台库存调整"
+          });
+        }
+        if (product.status === "active") {
+          const activationError = productActivationError(db, product);
+          if (activationError) return sendError(res, 400, activationError);
+        }
+        logAdminOperation(db, req, "update_product", "product", product.id, before, productPayload(db, product), body.reason || "更新商品");
+        await writeDb(db);
+        return sendJson(res, 200, { product: productPayload(db, product) });
       }
 
       if (req.method === "GET" && pathname === "/api/admin/points") {

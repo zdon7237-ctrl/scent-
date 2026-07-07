@@ -37,6 +37,40 @@ export function adminGetPointsMallItems() {
   return apiFetch("/api/admin/points-mall/items");
 }
 
+export function adminGetProducts() {
+  return apiFetch("/api/admin/products");
+}
+
+export function adminCreateProduct(payload) {
+  return apiFetch("/api/admin/products", {
+    method: "POST",
+    body: payload
+  });
+}
+
+export function adminUpdateProduct(productId, payload) {
+  return apiFetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
+    method: "PATCH",
+    body: payload
+  });
+}
+
+export function adminSetProductStatus(productId, action) {
+  return apiFetch(`/api/admin/products/${encodeURIComponent(productId)}/${action}`, {
+    method: "POST",
+    body: {
+      reason: action === "activate" ? "后台上架商品" : action === "deactivate" ? "后台下架商品" : "后台归档商品"
+    }
+  });
+}
+
+export function adminAdjustProductInventory(productId, variantId, payload) {
+  return apiFetch(`/api/admin/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}/inventory`, {
+    method: "POST",
+    body: payload
+  });
+}
+
 export function adminGetPointsRedemptions() {
   return apiFetch("/api/admin/points-mall/redemptions");
 }

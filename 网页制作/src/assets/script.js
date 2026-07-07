@@ -373,6 +373,35 @@
   function adminGetPointsMallItems() {
     return apiFetch("/api/admin/points-mall/items");
   }
+  function adminGetProducts() {
+    return apiFetch("/api/admin/products");
+  }
+  function adminCreateProduct(payload) {
+    return apiFetch("/api/admin/products", {
+      method: "POST",
+      body: payload
+    });
+  }
+  function adminUpdateProduct(productId, payload) {
+    return apiFetch(`/api/admin/products/${encodeURIComponent(productId)}`, {
+      method: "PATCH",
+      body: payload
+    });
+  }
+  function adminSetProductStatus(productId, action) {
+    return apiFetch(`/api/admin/products/${encodeURIComponent(productId)}/${action}`, {
+      method: "POST",
+      body: {
+        reason: action === "activate" ? "\u540E\u53F0\u4E0A\u67B6\u5546\u54C1" : action === "deactivate" ? "\u540E\u53F0\u4E0B\u67B6\u5546\u54C1" : "\u540E\u53F0\u5F52\u6863\u5546\u54C1"
+      }
+    });
+  }
+  function adminAdjustProductInventory(productId, variantId, payload) {
+    return apiFetch(`/api/admin/products/${encodeURIComponent(productId)}/variants/${encodeURIComponent(variantId)}/inventory`, {
+      method: "POST",
+      body: payload
+    });
+  }
   function adminGetPointsRedemptions() {
     return apiFetch("/api/admin/points-mall/redemptions");
   }
@@ -501,6 +530,155 @@
       node.textContent = message;
       node.classList.toggle("is-error", type === "error");
       node.classList.toggle("is-success", type === "success");
+    }, escapeHtml = function(value = "") {
+      return String(value != null ? value : "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+    }, productStatusLabel = function(status) {
+      return {
+        draft: "\u8349\u7A3F",
+        active: "\u5DF2\u4E0A\u67B6",
+        inactive: "\u5DF2\u4E0B\u67B6",
+        archived: "\u5DF2\u5F52\u6863"
+      }[status] || status || "\u8349\u7A3F";
+    }, productImageLines = function(product = {}) {
+      return (product.images || []).map((image) => `${image.imageUrl}${image.alt && image.alt !== product.name ? ` | ${image.alt}` : ""}`).join("\n");
+    }, productImagesFromText = function(text = "") {
+      return String(text || "").split("\n").map((line, index) => {
+        const [imageUrl, alt] = line.split("|").map((part) => part.trim());
+        return imageUrl ? { imageUrl, alt: alt || "", sortOrder: index + 1 } : null;
+      }).filter(Boolean);
+    }, adminProductPayload = function(form) {
+      const formData = new FormData(form);
+      const payload = {
+        name: formData.get("name"),
+        slug: formData.get("slug"),
+        brandName: formData.get("brandName"),
+        category: formData.get("category"),
+        country: formData.get("country"),
+        family: formData.get("family"),
+        volume: formData.get("volume"),
+        concentration: formData.get("concentration"),
+        sweetness: formData.get("sweetness"),
+        status: formData.get("status"),
+        statusTags: formData.get("statusTags"),
+        notes: formData.get("notes"),
+        scenes: formData.get("scenes"),
+        imageLayout: formData.get("imageLayout"),
+        description: formData.get("description"),
+        buyerNote: formData.get("buyerNote"),
+        bestFor: formData.get("bestFor"),
+        caution: formData.get("caution"),
+        topNotes: formData.get("topNotes"),
+        middleNotes: formData.get("middleNotes"),
+        baseNotes: formData.get("baseNotes"),
+        sku: formData.get("sku"),
+        variantName: formData.get("variantName") || "\u9ED8\u8BA4\u89C4\u683C",
+        priceAmountYuan: Number(formData.get("priceAmountYuan") || 0),
+        stockQuantity: Number(formData.get("stockQuantity") || 0),
+        images: productImagesFromText(formData.get("images")),
+        reason: formData.get("reason") || "\u540E\u53F0\u4FDD\u5B58\u5546\u54C1"
+      };
+      const variantId = formData.get("variantId");
+      if (variantId) payload.variantId = variantId;
+      return payload;
+    }, adminProductForm = function(product = null) {
+      var _a;
+      const variant = (product == null ? void 0 : product.primaryVariant) || {};
+      const inventory = variant.inventory || {};
+      const isCreate = !product;
+      const id = (product == null ? void 0 : product.id) || "";
+      return `
+      <form class="admin-product-form ${isCreate ? "" : "admin-product-edit"}" ${isCreate ? "data-admin-product-create" : `data-admin-product-edit="${escapeHtml(id)}"`}>
+        ${!isCreate ? `<input type="hidden" name="variantId" value="${escapeHtml(variant.id || "")}">` : ""}
+        <div class="admin-form-grid">
+          <label class="field-label">\u5546\u54C1\u540D<input name="name" value="${escapeHtml((product == null ? void 0 : product.name) || "")}" required></label>
+          <label class="field-label">Slug<input name="slug" value="${escapeHtml((product == null ? void 0 : product.slug) || "")}" placeholder="ruby-tea" required></label>
+          <label class="field-label">\u54C1\u724C<input name="brandName" value="${escapeHtml((product == null ? void 0 : product.brandName) || "")}"></label>
+          <label class="field-label">\u72B6\u6001
+            <select name="status">
+              ${["draft", "active", "inactive", "archived"].map((status) => `<option value="${status}" ${(product == null ? void 0 : product.status) === status || !product && status === "draft" ? "selected" : ""}>${productStatusLabel(status)}</option>`).join("")}
+            </select>
+          </label>
+          <label class="field-label">\u4EF7\u683C<input name="priceAmountYuan" type="number" min="0" step="0.01" value="${escapeHtml(variant.priceAmountYuan || "")}"></label>
+          <label class="field-label">\u5E93\u5B58<input name="stockQuantity" type="number" min="0" step="1" value="${escapeHtml((_a = inventory.quantityOnHand) != null ? _a : "")}"></label>
+          <label class="field-label">SKU<input name="sku" value="${escapeHtml(variant.sku || "")}"></label>
+          <label class="field-label">\u89C4\u683C<input name="variantName" value="${escapeHtml(variant.name || "\u9ED8\u8BA4\u89C4\u683C")}"></label>
+          <label class="field-label">\u5BB9\u91CF<input name="volume" value="${escapeHtml((product == null ? void 0 : product.volume) || "")}" placeholder="50ml"></label>
+          <label class="field-label">\u6D53\u5EA6<input name="concentration" value="${escapeHtml((product == null ? void 0 : product.concentration) || "")}" placeholder="EDP"></label>
+          <label class="field-label">\u9999\u8C03\u5BB6\u65CF<input name="family" value="${escapeHtml((product == null ? void 0 : product.family) || "")}"></label>
+          <label class="field-label">\u56FE\u7247\u6392\u7248
+            <select name="imageLayout">
+              ${["grid", "editorial", "detail", "minimal"].map((layout) => `<option value="${layout}" ${((product == null ? void 0 : product.imageLayout) || "grid") === layout ? "selected" : ""}>${layout}</option>`).join("")}
+            </select>
+          </label>
+          <label class="field-label">\u5206\u7C7B<input name="category" value="${escapeHtml((product == null ? void 0 : product.category) || "fragrance")}"></label>
+          <label class="field-label">\u56FD\u5BB6<input name="country" value="${escapeHtml((product == null ? void 0 : product.country) || "")}"></label>
+          <label class="field-label">\u751C\u5EA6<input name="sweetness" value="${escapeHtml((product == null ? void 0 : product.sweetness) || "")}" placeholder="low / medium / high"></label>
+          <label class="field-label">\u6807\u7B7E<input name="statusTags" value="${escapeHtml(((product == null ? void 0 : product.statusTags) || []).join("\u3001"))}" placeholder="New\u3001\u4E70\u624B\u63A8\u8350"></label>
+          <label class="field-label admin-wide-field">\u9999\u8C03<input name="notes" value="${escapeHtml(((product == null ? void 0 : product.notes) || []).join("\u3001"))}" placeholder="\u8336\u9999\u3001\u6728\u8D28\u3001\u9E9D\u9999"></label>
+          <label class="field-label admin-wide-field">\u573A\u666F<input name="scenes" value="${escapeHtml(((product == null ? void 0 : product.scenes) || []).join("\u3001"))}" placeholder="daily\u3001gift"></label>
+          <label class="field-label admin-wide-field">\u5546\u54C1\u56FE URL<textarea name="images" rows="4" placeholder="\u6BCF\u884C\u4E00\u5F20\u56FE\uFF0C\u652F\u6301\uFF1AURL | \u56FE\u7247\u8BF4\u660E">${escapeHtml(productImageLines(product || {}))}</textarea></label>
+          <label class="field-label admin-wide-field">\u63CF\u8FF0<textarea name="description" rows="3">${escapeHtml((product == null ? void 0 : product.description) || "")}</textarea></label>
+          <label class="field-label admin-wide-field">\u4E70\u624B\u70B9\u8BC4<textarea name="buyerNote" rows="3">${escapeHtml((product == null ? void 0 : product.buyerNote) || "")}</textarea></label>
+          <label class="field-label">\u9002\u5408\u573A\u666F<input name="bestFor" value="${escapeHtml((product == null ? void 0 : product.bestFor) || "")}"></label>
+          <label class="field-label">\u76F2\u4E70\u63D0\u9192<input name="caution" value="${escapeHtml((product == null ? void 0 : product.caution) || "")}"></label>
+          <label class="field-label">\u524D\u8C03<input name="topNotes" value="${escapeHtml((product == null ? void 0 : product.topNotes) || "")}"></label>
+          <label class="field-label">\u4E2D\u8C03<input name="middleNotes" value="${escapeHtml((product == null ? void 0 : product.middleNotes) || "")}"></label>
+          <label class="field-label">\u540E\u8C03<input name="baseNotes" value="${escapeHtml((product == null ? void 0 : product.baseNotes) || "")}"></label>
+          <label class="field-label">\u5907\u6CE8<input name="reason" value="${isCreate ? "\u540E\u53F0\u65B0\u589E\u5546\u54C1" : "\u540E\u53F0\u66F4\u65B0\u5546\u54C1"}"></label>
+        </div>
+        <div class="button-row">
+          <button class="button button-primary" type="submit">${isCreate ? "\u65B0\u589E\u5546\u54C1" : "\u4FDD\u5B58\u5546\u54C1"}</button>
+          ${!isCreate && product.status !== "active" ? `<button class="button button-secondary" type="button" data-admin-product-activate="${escapeHtml(id)}">\u4E0A\u67B6</button>` : ""}
+          ${!isCreate && product.status === "active" ? `<button class="button button-secondary" type="button" data-admin-product-deactivate="${escapeHtml(id)}">\u4E0B\u67B6</button>` : ""}
+          ${!isCreate && product.status !== "archived" ? `<button class="button button-secondary" type="button" data-admin-product-archive="${escapeHtml(id)}">\u5F52\u6863</button>` : ""}
+        </div>
+      </form>
+    `;
+    }, adminProductsMarkup = function(productsPayload) {
+      const products = productsPayload.products || [];
+      const summary = productsPayload.summary || {};
+      return `
+      <section class="admin-products-panel">
+        <div class="admin-panel-head">
+          <div>
+            <h2>\u5546\u54C1\u4E0A\u67B6\u4E0E\u5E93\u5B58</h2>
+            <p>\u7EF4\u62A4\u9999\u6C34\u8D44\u6599\u3001\u56FE\u7247\u6392\u7248\u3001\u4E0A\u4E0B\u67B6\u72B6\u6001\u548C\u53EF\u552E\u5E93\u5B58\u3002</p>
+          </div>
+          <div class="admin-stat-row">
+            <span><strong>${summary.total || 0}</strong>\u5168\u90E8</span>
+            <span><strong>${summary.active || 0}</strong>\u4E0A\u67B6</span>
+            <span><strong>${summary.lowStock || 0}</strong>\u4F4E\u5E93\u5B58</span>
+            <span><strong>${summary.outOfStock || 0}</strong>\u552E\u7F44</span>
+          </div>
+        </div>
+        <details class="admin-create-product" ${products.length ? "" : "open"}>
+          <summary>\u65B0\u589E\u9999\u6C34</summary>
+          ${adminProductForm()}
+        </details>
+        <div class="admin-product-list">
+          ${products.map((product) => `
+            <article class="admin-product-item">
+              <div class="admin-product-summary">
+                <div>
+                  <h3>${escapeHtml(product.name)}</h3>
+                  <p>${escapeHtml(product.slug)} \xB7 ${escapeHtml(product.brandName || "\u672A\u586B\u54C1\u724C")} \xB7 ${moneyText(product.priceAmountYuan)} \xB7 \u5E93\u5B58 ${product.availableQuantity}</p>
+                </div>
+                <span class="status-badge">${productStatusLabel(product.status)}</span>
+                <span>${(product.images || []).length} \u5F20\u56FE</span>
+              </div>
+              ${adminProductForm(product)}
+              ${product.primaryVariant ? `
+                <form class="admin-inventory-form" data-admin-inventory-form="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(product.primaryVariant.id)}">
+                  <label class="field-label">\u5E93\u5B58\u53D8\u52A8<input name="quantityDelta" type="number" step="1" placeholder="+5 \u6216 -2" required></label>
+                  <label class="field-label">\u539F\u56E0<input name="reason" value="\u540E\u53F0\u5E93\u5B58\u8C03\u6574"></label>
+                  <button class="button button-secondary" type="submit">\u8C03\u6574\u5E93\u5B58</button>
+                </form>
+              ` : ""}
+            </article>
+          `).join("") || `<div class="empty-state">\u8FD8\u6CA1\u6709\u5546\u54C1\u3002\u5148\u65B0\u589E\u4E00\u652F\u9999\u6C34\uFF0C\u518D\u8865\u56FE\u7247\u548C\u5E93\u5B58\u3002</div>`}
+        </div>
+      </section>
+    `;
     }, productCard = function(product, options = {}) {
       const compact = options.compact ? " product-card-compact" : "";
       const favorite = state.favorites.has(product.id);
@@ -1086,6 +1264,9 @@
         const adminLogoutButton = event.target.closest("[data-admin-logout]");
         const adminMallActivate = event.target.closest("[data-admin-mall-activate]");
         const adminMallDeactivate = event.target.closest("[data-admin-mall-deactivate]");
+        const adminProductActivate = event.target.closest("[data-admin-product-activate]");
+        const adminProductDeactivate = event.target.closest("[data-admin-product-deactivate]");
+        const adminProductArchive = event.target.closest("[data-admin-product-archive]");
         const adminRedemptionStatus = event.target.closest("[data-admin-redemption-status]");
         const adminRedemptionCancel = event.target.closest("[data-admin-redemption-cancel]");
         if (add) addToCart(add.dataset.addCart);
@@ -1157,6 +1338,20 @@
           try {
             await adminSetMallItemStatus(node.dataset.adminMallActivate || node.dataset.adminMallDeactivate, action);
             showToast(action === "activate" ? "\u79EF\u5206\u5546\u54C1\u5DF2\u4E0A\u67B6\u3002" : "\u79EF\u5206\u5546\u54C1\u5DF2\u4E0B\u67B6\u3002");
+            await renderAdminPage();
+          } catch (error) {
+            showToast(error.message);
+          }
+        }
+        if (adminProductActivate || adminProductDeactivate || adminProductArchive) {
+          const node = adminProductActivate || adminProductDeactivate || adminProductArchive;
+          const action = adminProductActivate ? "activate" : adminProductDeactivate ? "deactivate" : "archive";
+          try {
+            await adminSetProductStatus(
+              node.dataset.adminProductActivate || node.dataset.adminProductDeactivate || node.dataset.adminProductArchive,
+              action
+            );
+            showToast(action === "activate" ? "\u5546\u54C1\u5DF2\u4E0A\u67B6\u3002" : action === "deactivate" ? "\u5546\u54C1\u5DF2\u4E0B\u67B6\u3002" : "\u5546\u54C1\u5DF2\u5F52\u6863\u3002");
             await renderAdminPage();
           } catch (error) {
             showToast(error.message);
@@ -1523,7 +1718,7 @@
     `;
     }
     async function renderAdminPage() {
-      var _a, _b;
+      var _a, _b, _c;
       const mount = $2("[data-admin-page]");
       if (!mount) return;
       let session;
@@ -1554,18 +1749,19 @@
         return;
       }
       try {
-        const [members, orders, points, logs, mallItems, mallRedemptions] = await Promise.all([
+        const [members, orders, points, logs, mallItems, mallRedemptions, products] = await Promise.all([
           adminGetMembers(),
           adminGetOrders(),
           adminGetPoints(),
           adminGetAuditLogs(),
           adminGetPointsMallItems(),
-          adminGetPointsRedemptions()
+          adminGetPointsRedemptions(),
+          adminGetProducts()
         ]);
         mount.innerHTML = `
         <div class="section-heading">
           <p class="eyebrow">Admin</p>
-          <h2>\u4F1A\u5458\u4E0E\u8BA2\u5355\u7BA1\u7406</h2>
+          <h2>\u8FD0\u8425\u540E\u53F0</h2>
           <p>${session.admin.name || session.admin.email} \xB7 ${session.admin.role}</p>
           <div class="button-row">
             <button class="button button-secondary" type="button" data-admin-export>\u5BFC\u51FA\u4F1A\u5458\u540D\u5355</button>
@@ -1573,6 +1769,7 @@
           </div>
         </div>
         <div class="admin-grid">
+          ${adminProductsMarkup(products)}
           <section>
             <h2>\u4F1A\u5458</h2>
             <div class="member-table">
@@ -1609,12 +1806,12 @@
             <h2>\u79EF\u5206\u6D41\u6C34</h2>
             <div class="member-table">
               ${points.transactions.slice(0, 10).map((item) => {
-          var _a2, _b2, _c;
+          var _a2, _b2, _c2;
           return `
                 <article>
                   <div>
                     <h3>${pointTypeLabel(item.type)}</h3>
-                    <p>${((_a2 = item.user) == null ? void 0 : _a2.name) || ((_b2 = item.user) == null ? void 0 : _b2.email) || ((_c = item.user) == null ? void 0 : _c.phone) || "\u672A\u77E5\u4F1A\u5458"}${item.orderNo ? ` \xB7 ${item.orderNo}` : ""}</p>
+                    <p>${((_a2 = item.user) == null ? void 0 : _a2.name) || ((_b2 = item.user) == null ? void 0 : _b2.email) || ((_c2 = item.user) == null ? void 0 : _c2.phone) || "\u672A\u77E5\u4F1A\u5458"}${item.orderNo ? ` \xB7 ${item.orderNo}` : ""}</p>
                   </div>
                   <strong>${item.points > 0 ? "+" : ""}${item.points}</strong>
                   <span>${new Date(item.createdAt).toLocaleString("zh-CN")}</span>
@@ -1649,13 +1846,13 @@
             <h2>\u5151\u6362\u8BA2\u5355</h2>
             <div class="member-table">
               ${mallRedemptions.redemptions.map((order) => {
-          var _a2, _b2, _c;
+          var _a2, _b2, _c2;
           return `
                 <article>
                   <div>
                     <h3>${order.orderNo}</h3>
                     <p>${order.items.map((item) => `${item.name} x ${item.quantity}`).join("\u3001")}</p>
-                    <p>${((_a2 = order.user) == null ? void 0 : _a2.name) || ((_b2 = order.user) == null ? void 0 : _b2.email) || ((_c = order.user) == null ? void 0 : _c.phone) || "\u672A\u77E5\u4F1A\u5458"} \xB7 ${redemptionStatusLabel(order.status)}</p>
+                    <p>${((_a2 = order.user) == null ? void 0 : _a2.name) || ((_b2 = order.user) == null ? void 0 : _b2.email) || ((_c2 = order.user) == null ? void 0 : _c2.phone) || "\u672A\u77E5\u4F1A\u5458"} \xB7 ${redemptionStatusLabel(order.status)}</p>
                   </div>
                   <strong>${order.totalPoints} \u79EF\u5206</strong>
                   ${order.status === "pending_fulfillment" ? `<button class="button button-secondary" type="button" data-admin-redemption-status="${order.id}" data-status="processing">\u5904\u7406</button>` : ""}
@@ -1700,6 +1897,46 @@
           } catch (error) {
             showToast(error.message);
           }
+        });
+        (_c = $2("[data-admin-product-create]", mount)) == null ? void 0 : _c.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const form = event.currentTarget;
+          try {
+            await adminCreateProduct(adminProductPayload(form));
+            showToast("\u5546\u54C1\u5DF2\u65B0\u589E\u3002");
+            await renderAdminPage();
+          } catch (error) {
+            showToast(error.message);
+          }
+        });
+        $all2("[data-admin-product-edit]", mount).forEach((form) => {
+          form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            try {
+              await adminUpdateProduct(form.dataset.adminProductEdit, adminProductPayload(form));
+              showToast("\u5546\u54C1\u5DF2\u4FDD\u5B58\u3002");
+              await renderAdminPage();
+            } catch (error) {
+              showToast(error.message);
+            }
+          });
+        });
+        $all2("[data-admin-inventory-form]", mount).forEach((form) => {
+          form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const formData = new FormData(form);
+            try {
+              await adminAdjustProductInventory(form.dataset.adminInventoryForm, form.dataset.variantId, {
+                mode: "adjust",
+                quantityDelta: Number(formData.get("quantityDelta")),
+                reason: formData.get("reason") || "\u540E\u53F0\u5E93\u5B58\u8C03\u6574"
+              });
+              showToast("\u5E93\u5B58\u5DF2\u8C03\u6574\u3002");
+              await renderAdminPage();
+            } catch (error) {
+              showToast(error.message);
+            }
+          });
         });
       } catch (error) {
         mount.innerHTML = `<div class="empty-state">${error.message}</div>`;

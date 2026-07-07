@@ -64,14 +64,68 @@ export async function seed() {
     }
 
     await client.query(
-      `insert into products (id, slug, name, brand_name, status, description)
-       values ($1,$2,$3,$4,'active',$5)
+      `insert into products (
+        id, slug, name, brand_name, brand_id, category, country, status, description,
+        volume, concentration, stock_label, family, notes, scenes, sweetness,
+        status_tags, hero_image_url, image_layout, buyer_note, best_for, caution,
+        top_notes, middle_notes, base_notes, sort_order
+       )
+       values (
+        $1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,
+        $16::jsonb,$17,$18,$19,$20,$21,$22,$23,$24,$25
+       )
        on conflict (slug) do update set
         name = excluded.name,
         brand_name = excluded.brand_name,
+        brand_id = excluded.brand_id,
+        category = excluded.category,
+        country = excluded.country,
         description = excluded.description,
+        volume = excluded.volume,
+        concentration = excluded.concentration,
+        stock_label = excluded.stock_label,
+        family = excluded.family,
+        notes = excluded.notes,
+        scenes = excluded.scenes,
+        sweetness = excluded.sweetness,
+        status_tags = excluded.status_tags,
+        hero_image_url = excluded.hero_image_url,
+        image_layout = excluded.image_layout,
+        buyer_note = excluded.buyer_note,
+        best_for = excluded.best_for,
+        caution = excluded.caution,
+        top_notes = excluded.top_notes,
+        middle_notes = excluded.middle_notes,
+        base_notes = excluded.base_notes,
+        sort_order = excluded.sort_order,
         updated_at = now()`,
-      ["product-vespree", "vespree", "Vespree 小众香水", "Scent Atoll", "当前测试和开发结账使用的最小商品数据。"]
+      [
+        "product-vespree",
+        "vespree",
+        "Vespree 晚霞之约",
+        "Maison Bienaime",
+        "bienaime",
+        "fragrance",
+        "France",
+        "木质花香，适合想要一支有礼貌但不普通的通勤香。",
+        "75ml",
+        "EDP",
+        "现货",
+        "木质花香",
+        JSON.stringify(["木质", "花香", "辛香"]),
+        JSON.stringify(["daily", "date", "gift"]),
+        "medium",
+        JSON.stringify(["New", "买手推荐"]),
+        "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&w=1200&q=82",
+        "editorial",
+        "木质和树脂把整体压得更稳，适合办公室、晚餐和送礼。",
+        "办公室、晚餐、送礼",
+        "如果只喜欢非常清爽的柑橘，可能会觉得后调偏暖。",
+        "豆蔻、佛手柑、薰衣草、胡萝卜籽",
+        "秘鲁香脂、玫瑰、天竺葵、鸢尾",
+        "香根草、安息香、香草、雪松、檀香",
+        1
+      ]
     );
 
     await client.query(
@@ -82,6 +136,31 @@ export async function seed() {
         price_amount = excluded.price_amount,
         updated_at = now()`,
       ["variant-vespree-default", "product-vespree", "vespree-default", "默认规格", 98000]
+    );
+
+    await client.query(
+      `insert into product_images (id, product_id, image_url, alt, role, sort_order)
+       values ($1,$2,$3,$4,'hero',1)
+       on conflict (id) do update set
+        image_url = excluded.image_url,
+        alt = excluded.alt,
+        role = excluded.role,
+        sort_order = excluded.sort_order`,
+      [
+        "image-vespree-hero",
+        "product-vespree",
+        "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&w=1200&q=82",
+        "Vespree 晚霞之约商品图"
+      ]
+    );
+
+    await client.query(
+      `insert into inventory_items (id, variant_id, quantity_on_hand, quantity_reserved)
+       values ($1,$2,$3,0)
+       on conflict (id) do update set
+        quantity_on_hand = greatest(inventory_items.quantity_on_hand, excluded.quantity_on_hand),
+        updated_at = now()`,
+      ["inventory-vespree-default", "variant-vespree-default", 12]
     );
 
     for (const [id, productId, name, description, image, pointsPrice, stockQuantity, status, sortOrder] of defaultPointsMallItems()) {
