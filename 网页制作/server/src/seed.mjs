@@ -1,7 +1,14 @@
 import { randomUUID, scryptSync } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 import { hasDatabaseUrl, withPgTransaction } from "./db.mjs";
 
 const defaultSeedAdminPassword = ["dev", "admin"].join("-");
+const modulePath = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(modulePath);
+const rootDir = path.resolve(__dirname, "../..");
 
 function hashPassword(password) {
   const salt = randomUUID().replaceAll("-", "");
@@ -28,6 +35,60 @@ export function defaultPointsMallItems() {
     ["pm-tea-sample", "tea-sample", "茶香主题试香套装", "从清透乌龙到温柔红茶，适合低甜度和东方感偏好。", "", 1600, 10, "active", 4],
     ["pm-wood-sample", "wood-sample", "木质与焚香试香套装", "偏冷感、雨天和树脂质地，适合想找更成熟气味的人。", "", 1800, 10, "active", 5]
   ];
+}
+
+function loadCatalogProducts() {
+  const source = path.join(rootDir, "src/assets/data.js");
+  const sandbox = { window: {} };
+  vm.runInNewContext(readFileSync(source, "utf8"), sandbox);
+  return sandbox.window.SA_DATA?.products || [];
+}
+
+function productRowsFromCatalog() {
+  return loadCatalogProducts().map((item, index) => ({
+    id: `product-${item.id}`,
+    slug: item.id,
+    name: item.name,
+    brandName: item.brand || null,
+    brandId: item.brandId || null,
+    category: item.category || "fragrance",
+    country: item.country || null,
+    status: item.stock === "售罄" ? "inactive" : "active",
+    description: item.description || null,
+    volume: item.volume || null,
+    concentration: item.concentration || null,
+    stockLabel: item.stock || "现货",
+    year: item.year || null,
+    perfumer: item.perfumer || null,
+    family: item.family || null,
+    notes: JSON.stringify(item.notes || []),
+    scenes: JSON.stringify(item.scenes || []),
+    mood: JSON.stringify(item.mood || []),
+    sweetness: item.sweetness || null,
+    statusTags: JSON.stringify(item.status || []),
+    heroImageUrl: item.image || null,
+    imageLayout: "grid",
+    buyerNote: item.buyer || null,
+    bestFor: item.bestFor || null,
+    caution: item.caution || null,
+    topNotes: item.top || null,
+    middleNotes: item.middle || null,
+    baseNotes: item.base || null,
+    sortOrder: index + 1,
+    variantId: `variant-${item.id}-default`,
+    sku: `${item.id}-default`,
+    variantName: item.volume || "默认规格",
+    priceAmount: Math.round(Number(item.price || 0) * 100),
+    imageId: `image-${item.id}-hero`,
+    imageAlt: `${item.name} 商品图`,
+    inventoryId: `inventory-${item.id}-default`,
+    quantityOnHand: item.stock === "售罄" ? 0 : item.stock === "少量" ? 3 : item.stock === "限量" ? 2 : 12
+  }));
+}
+
+async function findProductIdBySlug(client, slug, fallbackId) {
+  const result = await client.query("select id from products where slug = $1", [slug]);
+  return result.rows[0]?.id || fallbackId;
 }
 
 export async function seed() {
@@ -63,105 +124,52 @@ export async function seed() {
       );
     }
 
-    await client.query(
-      `insert into products (
-        id, slug, name, brand_name, brand_id, category, country, status, description,
-        volume, concentration, stock_label, family, notes, scenes, sweetness,
-        status_tags, hero_image_url, image_layout, buyer_note, best_for, caution,
-        top_notes, middle_notes, base_notes, sort_order
-       )
-       values (
-        $1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,
-        $16::jsonb,$17,$18,$19,$20,$21,$22,$23,$24,$25
-       )
-       on conflict (slug) do update set
-        name = excluded.name,
-        brand_name = excluded.brand_name,
-        brand_id = excluded.brand_id,
-        category = excluded.category,
-        country = excluded.country,
-        description = excluded.description,
-        volume = excluded.volume,
-        concentration = excluded.concentration,
-        stock_label = excluded.stock_label,
-        family = excluded.family,
-        notes = excluded.notes,
-        scenes = excluded.scenes,
-        sweetness = excluded.sweetness,
-        status_tags = excluded.status_tags,
-        hero_image_url = excluded.hero_image_url,
-        image_layout = excluded.image_layout,
-        buyer_note = excluded.buyer_note,
-        best_for = excluded.best_for,
-        caution = excluded.caution,
-        top_notes = excluded.top_notes,
-        middle_notes = excluded.middle_notes,
-        base_notes = excluded.base_notes,
-        sort_order = excluded.sort_order,
-        updated_at = now()`,
-      [
-        "product-vespree",
-        "vespree",
-        "Vespree 晚霞之约",
-        "Maison Bienaime",
-        "bienaime",
-        "fragrance",
-        "France",
-        "木质花香，适合想要一支有礼貌但不普通的通勤香。",
-        "75ml",
-        "EDP",
-        "现货",
-        "木质花香",
-        JSON.stringify(["木质", "花香", "辛香"]),
-        JSON.stringify(["daily", "date", "gift"]),
-        "medium",
-        JSON.stringify(["New", "买手推荐"]),
-        "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&w=1200&q=82",
-        "editorial",
-        "木质和树脂把整体压得更稳，适合办公室、晚餐和送礼。",
-        "办公室、晚餐、送礼",
-        "如果只喜欢非常清爽的柑橘，可能会觉得后调偏暖。",
-        "豆蔻、佛手柑、薰衣草、胡萝卜籽",
-        "秘鲁香脂、玫瑰、天竺葵、鸢尾",
-        "香根草、安息香、香草、雪松、檀香",
-        1
-      ]
-    );
+    for (const item of productRowsFromCatalog()) {
+      await client.query(
+        `insert into products (
+          id, slug, name, brand_name, brand_id, category, country, status, description,
+          volume, concentration, stock_label, year, perfumer, family, notes, scenes, mood,
+          sweetness, status_tags, hero_image_url, image_layout, buyer_note, best_for, caution,
+          top_notes, middle_notes, base_notes, sort_order
+        )
+        values (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18::jsonb,
+          $19,$20::jsonb,$21,$22,$23,$24,$25,$26,$27,$28,$29
+        )
+        on conflict (slug) do nothing`,
+        [
+          item.id, item.slug, item.name, item.brandName, item.brandId, item.category, item.country, item.status,
+          item.description, item.volume, item.concentration, item.stockLabel, item.year, item.perfumer, item.family,
+          item.notes, item.scenes, item.mood, item.sweetness, item.statusTags, item.heroImageUrl, item.imageLayout,
+          item.buyerNote, item.bestFor, item.caution, item.topNotes, item.middleNotes, item.baseNotes, item.sortOrder
+        ]
+      );
 
-    await client.query(
-      `insert into product_variants (id, product_id, sku, name, price_amount, status)
-       values ($1,$2,$3,$4,$5,'active')
-       on conflict (sku) do update set
-        name = excluded.name,
-        price_amount = excluded.price_amount,
-        updated_at = now()`,
-      ["variant-vespree-default", "product-vespree", "vespree-default", "默认规格", 98000]
-    );
+      const productId = await findProductIdBySlug(client, item.slug, item.id);
 
-    await client.query(
-      `insert into product_images (id, product_id, image_url, alt, role, sort_order)
-       values ($1,$2,$3,$4,'hero',1)
-       on conflict (id) do update set
-        image_url = excluded.image_url,
-        alt = excluded.alt,
-        role = excluded.role,
-        sort_order = excluded.sort_order`,
-      [
-        "image-vespree-hero",
-        "product-vespree",
-        "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&w=1200&q=82",
-        "Vespree 晚霞之约商品图"
-      ]
-    );
+      await client.query(
+        `insert into product_variants (id, product_id, sku, name, price_amount, status)
+         values ($1,$2,$3,$4,$5,'active')
+         on conflict (sku) do nothing`,
+        [item.variantId, productId, item.sku, item.variantName, item.priceAmount]
+      );
 
-    await client.query(
-      `insert into inventory_items (id, variant_id, quantity_on_hand, quantity_reserved)
-       values ($1,$2,$3,0)
-       on conflict (id) do update set
-        quantity_on_hand = greatest(inventory_items.quantity_on_hand, excluded.quantity_on_hand),
-        updated_at = now()`,
-      ["inventory-vespree-default", "variant-vespree-default", 12]
-    );
+      if (item.heroImageUrl) {
+        await client.query(
+          `insert into product_images (id, product_id, image_url, alt, role, sort_order)
+           values ($1,$2,$3,$4,'hero',1)
+           on conflict (id) do nothing`,
+          [item.imageId, productId, item.heroImageUrl, item.imageAlt]
+        );
+      }
+
+      await client.query(
+        `insert into inventory_items (id, variant_id, quantity_on_hand, quantity_reserved)
+         values ($1,$2,$3,0)
+         on conflict (id) do nothing`,
+        [item.inventoryId, item.variantId, item.quantityOnHand]
+      );
+    }
 
     for (const [id, productId, name, description, image, pointsPrice, stockQuantity, status, sortOrder] of defaultPointsMallItems()) {
       await client.query(

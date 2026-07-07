@@ -10,9 +10,8 @@ export const catalogData = window.SA_DATA || {
 
 export const hasCatalogData = Boolean(window.SA_DATA);
 
-export const allCatalogItems = [
-  ...catalogData.products,
-  ...catalogData.sampleSets.map((set) => ({
+export function sampleSetItems() {
+  return catalogData.sampleSets.map((set) => ({
     ...set,
     brand: "Scent Atoll",
     category: "sample",
@@ -25,15 +24,31 @@ export const allCatalogItems = [
     scenes: ["daily", "gift"],
     mood: ["clean"],
     sweetness: "medium"
-  }))
-];
+  }));
+}
+
+export function allCatalogItems() {
+  return [
+    ...catalogData.products,
+    ...sampleSetItems()
+  ];
+}
+
+export function replaceCatalogProducts(products = []) {
+  if (!Array.isArray(products)) return false;
+  catalogData.products = products;
+  const notes = new Set(catalogData.notes || []);
+  products.forEach((product) => (product.notes || []).forEach((note) => notes.add(note)));
+  catalogData.notes = Array.from(notes);
+  return true;
+}
 
 export function formatPrice(value) {
   return `¥${Number(value).toLocaleString("zh-CN")}`;
 }
 
 export function productById(id) {
-  return catalogData.products.find((product) => product.id === id);
+  return catalogData.products.find((product) => product.id === id || product.productId === id);
 }
 
 export function brandById(id) {
@@ -45,11 +60,11 @@ export function articleById(id) {
 }
 
 export function catalogItemById(id) {
-  return allCatalogItems.find((item) => item.id === id);
+  return allCatalogItems().find((item) => item.id === id || item.productId === id);
 }
 
 export function canPurchase(item) {
-  return Boolean(item && Number(item.price) > 0 && item.stock !== "售罄");
+  return Boolean(item && Number(item.price) > 0 && item.stock !== "售罄" && item.canPurchase !== false);
 }
 
 export function imageStyle(url) {

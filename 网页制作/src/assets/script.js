@@ -87,9 +87,8 @@
     articles: []
   };
   var hasCatalogData = Boolean(window.SA_DATA);
-  var allCatalogItems = [
-    ...catalogData.products,
-    ...catalogData.sampleSets.map((set) => ({
+  function sampleSetItems() {
+    return catalogData.sampleSets.map((set) => ({
       ...set,
       brand: "Scent Atoll",
       category: "sample",
@@ -102,13 +101,27 @@
       scenes: ["daily", "gift"],
       mood: ["clean"],
       sweetness: "medium"
-    }))
-  ];
+    }));
+  }
+  function allCatalogItems() {
+    return [
+      ...catalogData.products,
+      ...sampleSetItems()
+    ];
+  }
+  function replaceCatalogProducts(products = []) {
+    if (!Array.isArray(products)) return false;
+    catalogData.products = products;
+    const notes = new Set(catalogData.notes || []);
+    products.forEach((product) => (product.notes || []).forEach((note) => notes.add(note)));
+    catalogData.notes = Array.from(notes);
+    return true;
+  }
   function formatPrice(value) {
     return `\xA5${Number(value).toLocaleString("zh-CN")}`;
   }
   function productById(id) {
-    return catalogData.products.find((product) => product.id === id);
+    return catalogData.products.find((product) => product.id === id || product.productId === id);
   }
   function brandById(id) {
     return catalogData.brands.find((brand) => brand.id === id);
@@ -117,10 +130,10 @@
     return catalogData.articles.find((article) => article.id === id);
   }
   function catalogItemById(id) {
-    return allCatalogItems.find((item) => item.id === id);
+    return allCatalogItems().find((item) => item.id === id || item.productId === id);
   }
   function canPurchase(item) {
-    return Boolean(item && Number(item.price) > 0 && item.stock !== "\u552E\u7F44");
+    return Boolean(item && Number(item.price) > 0 && item.stock !== "\u552E\u7F44" && item.canPurchase !== false);
   }
   function imageStyle(url) {
     return `style="--image: url('${url}')"`;
@@ -519,7 +532,7 @@
     }, entryUrl = function(prefix, id) {
       return `${prefix}-${encodeURIComponent(id)}.html`;
     }, productUrl = function(id) {
-      return entryUrl("product", id);
+      return `product.html?id=${encodeURIComponent(id)}`;
     }, brandUrl = function(id) {
       return entryUrl("brand", id);
     }, articleUrl = function(id) {
@@ -728,7 +741,7 @@
             <button class="button button-secondary" type="button" data-favorite="${product.id}" aria-pressed="${favorite}">
               ${favorite ? "\u5DF2\u6536\u85CF" : "\u6536\u85CF"}
             </button>
-            <button class="button button-primary" type="button" data-add-cart="${product.id}">\u52A0\u5165\u610F\u5411\u6E05\u5355</button>
+            <button class="button button-primary" type="button" data-add-cart="${product.id}" ${product.canPurchase === false ? "disabled" : ""}>${product.canPurchase === false ? "\u6682\u4E0D\u53EF\u8D2D\u4E70" : "\u52A0\u5165\u610F\u5411\u6E05\u5355"}</button>
           </div>
         </div>
       </article>
@@ -873,7 +886,7 @@
           return true;
         }).filter((product) => {
           if (!q) return true;
-          return [product.brand, product.name, product.family, product.country, product.description, ...product.notes, ...product.status].join(" ").toLowerCase().includes(q);
+          return [product.brand, product.name, product.family, product.country, product.description, ...product.notes || [], ...product.status || []].join(" ").toLowerCase().includes(q);
         });
         if (result) result.textContent = `${filtered.length} \u4EF6\u4F5C\u54C1`;
         grid.innerHTML = filtered.length ? filtered.map((product) => productCard(product)).join("") : `
@@ -891,8 +904,28 @@
     }, renderProductPage = function() {
       const mount = $2("[data-product-page]");
       if (!mount) return;
-      const id = mount.dataset.entryId || params().get("id") || catalogData.products[0].id;
-      const product = productById(id) || catalogData.products[0];
+      if (!catalogData.products.length) {
+        mount.innerHTML = `
+        <div class="empty-state">
+          <h2>\u6682\u65E0\u5DF2\u4E0A\u67B6\u5546\u54C1</h2>
+          <p>\u5546\u54C1\u4E0A\u67B6\u540E\uFF0C\u8FD9\u91CC\u4F1A\u81EA\u52A8\u663E\u793A\u8BE6\u60C5\u3002</p>
+          <a class="button button-primary" href="shop.html">\u8FD4\u56DE\u9999\u6C34\u5217\u8868</a>
+        </div>
+      `;
+        return;
+      }
+      const requestedId = params().get("id") || mount.dataset.entryId || catalogData.products[0].id;
+      const product = productById(requestedId);
+      if (!product) {
+        mount.innerHTML = `
+        <div class="empty-state">
+          <h2>\u5546\u54C1\u6682\u672A\u4E0A\u67B6</h2>
+          <p>\u8FD9\u652F\u9999\u6C34\u53EF\u80FD\u5DF2\u7ECF\u4E0B\u67B6\uFF0C\u6216\u540E\u53F0\u8FD8\u6CA1\u6709\u53D1\u5E03\u3002</p>
+          <a class="button button-primary" href="shop.html">\u8FD4\u56DE\u9999\u6C34\u5217\u8868</a>
+        </div>
+      `;
+        return;
+      }
       const brand = brandById(product.brandId);
       const related = catalogData.products.filter((item) => item.id !== product.id && (item.brandId === product.brandId || item.notes.some((note) => product.notes.includes(note)))).slice(0, 3);
       document.title = `${product.name} | \u99A5\u5C7F`;
@@ -940,7 +973,7 @@
             <div><span>\u8D2D\u4E70\u5EFA\u8BAE</span><strong>${buyingCue(product)}</strong></div>
           </div>
           <div class="purchase-actions">
-            <button class="button button-primary" type="button" data-add-cart="${product.id}">\u54A8\u8BE2\u8FD9\u652F\u9999</button>
+            <button class="button button-primary" type="button" data-add-cart="${product.id}" ${product.canPurchase === false ? "disabled" : ""}>${product.canPurchase === false ? "\u6682\u4E0D\u53EF\u8D2D\u4E70" : "\u54A8\u8BE2\u8FD9\u652F\u9999"}</button>
             <a class="button button-secondary" href="samples.html">\u4E0D\u786E\u5B9A\uFF0C\u5148\u8BD5\u9999</a>
             <button class="button button-secondary" type="button" data-favorite="${product.id}" aria-pressed="${state.favorites.has(product.id)}">${state.favorites.has(product.id) ? "\u5DF2\u6536\u85CF" : "\u6536\u85CF"}</button>
           </div>
@@ -1418,27 +1451,39 @@
     const state = {
       favorites: new Set(readStore("sa_favorites", []))
     };
-    initNavigation();
-    renderCartShell();
-    bindGlobalActions();
-    initAuthHeader();
-    renderHome();
-    initShop();
-    renderProductPage();
-    renderBrands();
-    renderSamples();
-    renderJournal();
-    renderCartPage();
-    refreshMemberQuote();
-    renderAuthForms();
-    renderAccountPage();
-    renderPointsPage();
-    renderOrdersPage();
-    renderMembershipPage();
-    renderPointsMallPage();
-    renderPointsMallItemPage();
-    renderPointsRedemptionsPage();
-    renderAdminPage();
+    initializeApp();
+    async function initializeApp() {
+      initNavigation();
+      bindGlobalActions();
+      await loadManagedProducts();
+      renderCartShell();
+      initAuthHeader();
+      renderHome();
+      initShop();
+      renderProductPage();
+      renderBrands();
+      renderSamples();
+      renderJournal();
+      renderCartPage();
+      refreshMemberQuote();
+      renderAuthForms();
+      renderAccountPage();
+      renderPointsPage();
+      renderOrdersPage();
+      renderMembershipPage();
+      renderPointsMallPage();
+      renderPointsMallItemPage();
+      renderPointsRedemptionsPage();
+      renderAdminPage();
+    }
+    async function loadManagedProducts() {
+      try {
+        const payload = await apiFetch("/api/products");
+        replaceCatalogProducts(payload.products || []);
+      } catch (error) {
+        console.warn("Managed products unavailable; using bundled catalog.", error);
+      }
+    }
     async function initAuthHeader() {
       const mount = $2("[data-auth-actions]");
       if (!mount) return;

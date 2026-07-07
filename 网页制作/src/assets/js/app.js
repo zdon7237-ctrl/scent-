@@ -6,6 +6,7 @@ import {
   hasCatalogData,
   imageStyle,
   productById,
+  replaceCatalogProducts,
   tagList
 } from "./catalog.js";
 import { apiFetch, moneyText } from "./api-client.js";
@@ -48,27 +49,41 @@ if (hasCatalogData) {
     favorites: new Set(readStore("sa_favorites", []))
   };
 
-  initNavigation();
-  renderCartShell();
-  bindGlobalActions();
-  initAuthHeader();
-  renderHome();
-  initShop();
-  renderProductPage();
-  renderBrands();
-  renderSamples();
-  renderJournal();
-  renderCartPage();
-  refreshMemberQuote();
-  renderAuthForms();
-  renderAccountPage();
-  renderPointsPage();
-  renderOrdersPage();
-  renderMembershipPage();
-  renderPointsMallPage();
-  renderPointsMallItemPage();
-  renderPointsRedemptionsPage();
-  renderAdminPage();
+  initializeApp();
+
+  async function initializeApp() {
+    initNavigation();
+    bindGlobalActions();
+    await loadManagedProducts();
+    renderCartShell();
+    initAuthHeader();
+    renderHome();
+    initShop();
+    renderProductPage();
+    renderBrands();
+    renderSamples();
+    renderJournal();
+    renderCartPage();
+    refreshMemberQuote();
+    renderAuthForms();
+    renderAccountPage();
+    renderPointsPage();
+    renderOrdersPage();
+    renderMembershipPage();
+    renderPointsMallPage();
+    renderPointsMallItemPage();
+    renderPointsRedemptionsPage();
+    renderAdminPage();
+  }
+
+  async function loadManagedProducts() {
+    try {
+      const payload = await apiFetch("/api/products");
+      replaceCatalogProducts(payload.products || []);
+    } catch (error) {
+      console.warn("Managed products unavailable; using bundled catalog.", error);
+    }
+  }
 
   function readStore(key, fallback) {
     try {
@@ -142,7 +157,7 @@ if (hasCatalogData) {
   }
 
   function productUrl(id) {
-    return entryUrl("product", id);
+    return `product.html?id=${encodeURIComponent(id)}`;
   }
 
   function brandUrl(id) {
@@ -381,7 +396,7 @@ if (hasCatalogData) {
             <button class="button button-secondary" type="button" data-favorite="${product.id}" aria-pressed="${favorite}">
               ${favorite ? "已收藏" : "收藏"}
             </button>
-            <button class="button button-primary" type="button" data-add-cart="${product.id}">加入意向清单</button>
+            <button class="button button-primary" type="button" data-add-cart="${product.id}" ${product.canPurchase === false ? "disabled" : ""}>${product.canPurchase === false ? "暂不可购买" : "加入意向清单"}</button>
           </div>
         </div>
       </article>
@@ -556,7 +571,7 @@ if (hasCatalogData) {
         })
         .filter((product) => {
           if (!q) return true;
-          return [product.brand, product.name, product.family, product.country, product.description, ...product.notes, ...product.status].join(" ").toLowerCase().includes(q);
+          return [product.brand, product.name, product.family, product.country, product.description, ...(product.notes || []), ...(product.status || [])].join(" ").toLowerCase().includes(q);
         });
 
       if (result) result.textContent = `${filtered.length} 件作品`;
@@ -581,8 +596,28 @@ if (hasCatalogData) {
     const mount = $("[data-product-page]");
     if (!mount) return;
 
-    const id = mount.dataset.entryId || params().get("id") || data.products[0].id;
-    const product = productById(id) || data.products[0];
+    if (!data.products.length) {
+      mount.innerHTML = `
+        <div class="empty-state">
+          <h2>暂无已上架商品</h2>
+          <p>商品上架后，这里会自动显示详情。</p>
+          <a class="button button-primary" href="shop.html">返回香水列表</a>
+        </div>
+      `;
+      return;
+    }
+    const requestedId = params().get("id") || mount.dataset.entryId || data.products[0].id;
+    const product = productById(requestedId);
+    if (!product) {
+      mount.innerHTML = `
+        <div class="empty-state">
+          <h2>商品暂未上架</h2>
+          <p>这支香水可能已经下架，或后台还没有发布。</p>
+          <a class="button button-primary" href="shop.html">返回香水列表</a>
+        </div>
+      `;
+      return;
+    }
     const brand = brandById(product.brandId);
     const related = data.products
       .filter((item) => item.id !== product.id && (item.brandId === product.brandId || item.notes.some((note) => product.notes.includes(note))))
@@ -633,7 +668,7 @@ if (hasCatalogData) {
             <div><span>购买建议</span><strong>${buyingCue(product)}</strong></div>
           </div>
           <div class="purchase-actions">
-            <button class="button button-primary" type="button" data-add-cart="${product.id}">咨询这支香</button>
+            <button class="button button-primary" type="button" data-add-cart="${product.id}" ${product.canPurchase === false ? "disabled" : ""}>${product.canPurchase === false ? "暂不可购买" : "咨询这支香"}</button>
             <a class="button button-secondary" href="samples.html">不确定，先试香</a>
             <button class="button button-secondary" type="button" data-favorite="${product.id}" aria-pressed="${state.favorites.has(product.id)}">${state.favorites.has(product.id) ? "已收藏" : "收藏"}</button>
           </div>

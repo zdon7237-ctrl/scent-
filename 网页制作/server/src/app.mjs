@@ -5,7 +5,7 @@ import { createReadStream, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
-import { createRepository } from "./repository.mjs";
+import { createRepository, repositoryMode } from "./repository.mjs";
 
 const modulePath = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(modulePath);
@@ -13,6 +13,7 @@ const rootDir = path.resolve(__dirname, "../..");
 const publicDir = path.resolve(process.env.PUBLIC_DIR || path.join(rootDir, "dist"));
 const dataFile = path.resolve(process.env.MEMBER_DB || path.join(rootDir, "server/data/db.json"));
 const repository = createRepository({ dataFile });
+const autoWriteCatalogSeed = repositoryMode() !== "postgres";
 const port = Number(process.env.PORT || 8788);
 const sessionMaxAgeMs = 1000 * 60 * 60 * 24 * 30;
 const isProduction = process.env.NODE_ENV === "production";
@@ -350,7 +351,9 @@ async function ensureDb() {
 
 async function readDb() {
   await ensureDb();
-  return normalizeDb(await repository.read());
+  const db = normalizeDb(await repository.read());
+  if (autoWriteCatalogSeed && ensureCatalogProducts(db)) await writeDb(db);
+  return db;
 }
 
 async function writeDb(db) {
@@ -894,6 +897,122 @@ function adjustInventory(db, variantId, body) {
   return { inventory, movement, before };
 }
 
+function staticProductToDbProduct(item, index = 0) {
+  const createdAt = now();
+  return {
+    id: `product-${item.id}`,
+    slug: cleanText(item.id),
+    name: cleanText(item.name),
+    brandName: optionalText(item.brand),
+    brandId: optionalText(item.brandId),
+    category: optionalText(item.category || "fragrance"),
+    country: optionalText(item.country),
+    status: item.stock === "售罄" ? "inactive" : "active",
+    description: optionalText(item.description),
+    volume: optionalText(item.volume),
+    concentration: optionalText(item.concentration),
+    stockLabel: optionalText(item.stock || "现货"),
+    year: optionalText(item.year),
+    perfumer: optionalText(item.perfumer),
+    family: optionalText(item.family),
+    notes: listValue(item.notes),
+    scenes: listValue(item.scenes),
+    mood: listValue(item.mood),
+    sweetness: optionalText(item.sweetness),
+    statusTags: listValue(item.status),
+    heroImageUrl: optionalText(item.image),
+    imageLayout: "grid",
+    buyerNote: optionalText(item.buyer),
+    bestFor: optionalText(item.bestFor),
+    caution: optionalText(item.caution),
+    topNotes: optionalText(item.top),
+    middleNotes: optionalText(item.middle),
+    baseNotes: optionalText(item.base),
+    sortOrder: index + 1,
+    createdAt,
+    updatedAt: createdAt
+  };
+}
+
+function staticProductVariant(item, productId = `product-${item.id}`) {
+  const createdAt = now();
+  return {
+    id: `variant-${item.id}-default`,
+    productId,
+    sku: `${item.id}-default`,
+    name: item.volume || "默认规格",
+    priceAmount: money.fromYuan(item.price || 0),
+    status: "active",
+    createdAt,
+    updatedAt: createdAt
+  };
+}
+
+function staticProductImage(item, productId = `product-${item.id}`) {
+  return {
+    id: `image-${item.id}-hero`,
+    productId,
+    imageUrl: cleanText(item.image),
+    alt: `${item.name} 商品图`,
+    role: "hero",
+    sortOrder: 1,
+    createdAt: now()
+  };
+}
+
+function stockQuantityFromLabel(label) {
+  if (label === "售罄") return 0;
+  if (label === "少量") return 3;
+  if (label === "限量") return 2;
+  return 12;
+}
+
+function staticInventoryItem(item) {
+  const createdAt = now();
+  return {
+    id: `inventory-${item.id}-default`,
+    variantId: `variant-${item.id}-default`,
+    quantityOnHand: stockQuantityFromLabel(item.stock),
+    quantityReserved: 0,
+    createdAt,
+    updatedAt: createdAt
+  };
+}
+
+function ensureCatalogProducts(db) {
+  let changed = false;
+  (catalog.products || []).forEach((item, index) => {
+    const slug = cleanText(item.id);
+    let product = db.products.find((entry) => entry.slug === slug || entry.id === `product-${slug}`);
+    if (!product) {
+      product = staticProductToDbProduct(item, index);
+      db.products.push(product);
+      changed = true;
+    }
+
+    const variant = staticProductVariant(item, product.id);
+    if (!db.productVariants.some((entry) => entry.id === variant.id || entry.sku === variant.sku)) {
+      db.productVariants.push(variant);
+      changed = true;
+    }
+
+    if (item.image) {
+      const image = staticProductImage(item, product.id);
+      if (!db.productImages.some((entry) => entry.id === image.id)) {
+        db.productImages.push(image);
+        changed = true;
+      }
+    }
+
+    const inventory = staticInventoryItem(item);
+    if (!db.inventoryItems.some((entry) => entry.id === inventory.id || entry.variantId === inventory.variantId)) {
+      db.inventoryItems.push(inventory);
+      changed = true;
+    }
+  });
+  return changed;
+}
+
 function loadCatalog() {
   const source = existsSync(path.join(rootDir, "src/assets/data.js"))
     ? path.join(rootDir, "src/assets/data.js")
@@ -905,7 +1024,12 @@ function loadCatalog() {
 
 const catalog = loadCatalog();
 
-function catalogItemById(id) {
+function catalogItemById(id, db = null) {
+  const managedProduct = db ? productByIdOrSlug(db, id) : null;
+  if (managedProduct) {
+    const payload = productPayload(db, managedProduct);
+    return publicProductFromPayload(payload);
+  }
   const sampleSets = (catalog.sampleSets || []).map((set) => ({
     ...set,
     brand: "Scent Atoll",
@@ -918,11 +1042,57 @@ function catalogItemById(id) {
 }
 
 function canPurchase(item) {
-  return Boolean(item && Number(item.price) > 0 && item.stock !== "售罄");
+  return Boolean(item && Number(item.price) > 0 && item.stock !== "售罄" && item.isListed !== false && item.canPurchase !== false);
 }
 
-function mallItemPayload(item) {
-  const linkedProduct = item.productId ? catalogItemById(item.productId) : null;
+function publicProductFromPayload(product) {
+  const fallback = catalog.products?.find((item) => item.id === product.slug || item.id === product.id) || {};
+  return {
+    id: product.slug || product.id,
+    productId: product.id,
+    variantId: product.primaryVariant?.id || null,
+    brandId: product.brandId || fallback.brandId || "",
+    brand: product.brandName || fallback.brand || "Scent Atoll",
+    name: product.name,
+    category: product.category || fallback.category || "fragrance",
+    country: product.country || fallback.country || "",
+    price: product.priceAmountYuan || fallback.price || 0,
+    volume: product.volume || fallback.volume || "",
+    concentration: product.concentration || fallback.concentration || "",
+    stock: product.availableQuantity <= 0 ? "售罄" : product.stockLabel || fallback.stock || "现货",
+    year: product.year || fallback.year || "",
+    perfumer: product.perfumer || fallback.perfumer || "",
+    family: product.family || fallback.family || "",
+    notes: product.notes || [],
+    scenes: product.scenes || [],
+    mood: product.mood || [],
+    sweetness: product.sweetness || fallback.sweetness || "",
+    status: product.statusTags || [],
+    image: product.primaryImage || fallback.image || "",
+    imageLayout: product.imageLayout || "grid",
+    description: product.description || fallback.description || "",
+    top: product.topNotes || fallback.top || "",
+    middle: product.middleNotes || fallback.middle || "",
+    base: product.baseNotes || fallback.base || "",
+    buyer: product.buyerNote || fallback.buyer || "",
+    bestFor: product.bestFor || fallback.bestFor || "",
+    caution: product.caution || fallback.caution || "",
+    availableQuantity: product.availableQuantity,
+    isListed: product.status === "active",
+    canPurchase: product.canPurchase
+  };
+}
+
+function publicProducts(db, { includeInactive = false } = {}) {
+  return db.products
+    .slice()
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+    .map((item) => publicProductFromPayload(productPayload(db, item)))
+    .filter((item) => includeInactive || item.isListed);
+}
+
+function mallItemPayload(item, db = null) {
+  const linkedProduct = item.productId ? catalogItemById(item.productId, db) : null;
   const status = item.stockQuantity <= 0 && item.status === "active" ? "sold_out" : item.status;
   return {
     ...item,
@@ -937,8 +1107,8 @@ function mallItemPayload(item) {
   };
 }
 
-function activeMallItem(item) {
-  const payload = mallItemPayload(item);
+function activeMallItem(item, db = null) {
+  const payload = mallItemPayload(item, db);
   const nowMs = Date.now();
   const startsAt = item.startsAt ? new Date(item.startsAt).getTime() : null;
   const endsAt = item.endsAt ? new Date(item.endsAt).getTime() : null;
@@ -1045,9 +1215,9 @@ function createPointsRedemption(db, user, body) {
   }
   const item = db.pointsMallItems.find((entry) => entry.id === itemId);
   if (!item) throw new Error("积分商品不存在。");
-  if (!activeMallItem(item)) throw new Error("该积分商品暂不可兑换。");
+  if (!activeMallItem(item, db)) throw new Error("该积分商品暂不可兑换。");
   if (quantity > item.stockQuantity) throw new Error("积分商品库存不足。");
-  const itemPayload = mallItemPayload(item);
+  const itemPayload = mallItemPayload(item, db);
   const totalPoints = itemPayload.pointsPrice * quantity;
   const order = {
     id: randomUUID(),
@@ -1150,7 +1320,7 @@ function calculateQuote(db, user, rawItems) {
     : getBaseTier(db);
 
   const lines = items.map((entry) => {
-    const item = catalogItemById(entry.productId);
+    const item = catalogItemById(entry.productId, db);
     if (!canPurchase(item)) throw new Error(`商品 ${entry.productId} 暂不可购买。`);
     const unitPrice = money.fromYuan(item.price);
     const subtotalAmount = unitPrice * entry.quantity;
@@ -1426,6 +1596,21 @@ async function handleApi(req, res, pathname) {
       return sendJson(res, 200, user ? profilePayload(db, user) : { user: null });
     }
 
+    if (req.method === "GET" && pathname === "/api/products") {
+      return sendJson(res, 200, {
+        products: publicProducts(db)
+      });
+    }
+
+    const publicProductMatch = pathname.match(/^\/api\/products\/([^/]+)$/);
+    if (req.method === "GET" && publicProductMatch) {
+      const product = productByIdOrSlug(db, decodeURIComponent(publicProductMatch[1]));
+      if (!product || product.status !== "active") return sendError(res, 404, "商品不存在或已下架。");
+      return sendJson(res, 200, {
+        product: publicProductFromPayload(productPayload(db, product))
+      });
+    }
+
     if (pathname.startsWith("/api/member") && !user) return sendError(res, 401, "请先登录。");
 
     if (req.method === "GET" && pathname === "/api/member/profile") {
@@ -1491,17 +1676,17 @@ async function handleApi(req, res, pathname) {
     if (req.method === "GET" && pathname === "/api/points-mall/items") {
       return sendJson(res, 200, {
         items: db.pointsMallItems
-          .filter((item) => activeMallItem(item))
+          .filter((item) => activeMallItem(item, db))
           .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
-          .map(mallItemPayload)
+          .map((item) => mallItemPayload(item, db))
       });
     }
 
     const mallItemMatch = pathname.match(/^\/api\/points-mall\/items\/([^/]+)$/);
     if (req.method === "GET" && mallItemMatch) {
       const item = db.pointsMallItems.find((entry) => entry.id === mallItemMatch[1]);
-      if (!item || !activeMallItem(item)) return sendError(res, 404, "积分商品不存在或已下架。");
-      return sendJson(res, 200, { item: mallItemPayload(item) });
+      if (!item || !activeMallItem(item, db)) return sendError(res, 404, "积分商品不存在或已下架。");
+      return sendJson(res, 200, { item: mallItemPayload(item, db) });
     }
 
     if (req.method === "POST" && pathname === "/api/points-mall/redeem") {
@@ -1850,14 +2035,14 @@ async function handleApi(req, res, pathname) {
           items: db.pointsMallItems
             .slice()
             .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
-            .map(mallItemPayload)
+            .map((item) => mallItemPayload(item, db))
         });
       }
 
       if (req.method === "POST" && pathname === "/api/admin/points-mall/items") {
         if (!guard("mall:write")) return;
         const productId = body.productId ? String(body.productId).trim() : null;
-        const linkedProduct = productId ? catalogItemById(productId) : null;
+        const linkedProduct = productId ? catalogItemById(productId, db) : null;
         if (productId && !linkedProduct) return sendError(res, 404, "关联商品不存在。");
         const name = String(body.name || linkedProduct?.name || "").trim();
         const pointsPrice = Math.trunc(Number(body.pointsPrice || 0));
@@ -1885,7 +2070,7 @@ async function handleApi(req, res, pathname) {
         db.pointsMallItems.push(item);
         logAdminOperation(db, req, "create_points_mall_item", "points_mall_item", item.id, null, item, body.reason || "新增积分商品");
         await writeDb(db);
-        return sendJson(res, 201, { item: mallItemPayload(item) });
+        return sendJson(res, 201, { item: mallItemPayload(item, db) });
       }
 
       const mallAdminActionMatch = pathname.match(/^\/api\/admin\/points-mall\/items\/([^/]+)\/(activate|deactivate)$/);
@@ -1908,7 +2093,7 @@ async function handleApi(req, res, pathname) {
           body.reason || (mallAdminActionMatch[2] === "activate" ? "上架积分商品" : "下架积分商品")
         );
         await writeDb(db);
-        return sendJson(res, 200, { item: mallItemPayload(item) });
+        return sendJson(res, 200, { item: mallItemPayload(item, db) });
       }
 
       const mallAdminItemMatch = pathname.match(/^\/api\/admin\/points-mall\/items\/([^/]+)$/);
@@ -1919,7 +2104,7 @@ async function handleApi(req, res, pathname) {
         const before = snapshot(item);
         if ("productId" in body) {
           const productId = body.productId ? String(body.productId).trim() : null;
-          if (productId && !catalogItemById(productId)) return sendError(res, 404, "关联商品不存在。");
+          if (productId && !catalogItemById(productId, db)) return sendError(res, 404, "关联商品不存在。");
           item.productId = productId;
         }
         if ("name" in body) item.name = String(body.name || "").trim();
@@ -1943,7 +2128,7 @@ async function handleApi(req, res, pathname) {
         item.updatedAt = now();
         logAdminOperation(db, req, "update_points_mall_item", "points_mall_item", item.id, before, item, body.reason || "更新积分商品");
         await writeDb(db);
-        return sendJson(res, 200, { item: mallItemPayload(item) });
+        return sendJson(res, 200, { item: mallItemPayload(item, db) });
       }
 
       if (req.method === "GET" && pathname === "/api/admin/points-mall/redemptions") {
