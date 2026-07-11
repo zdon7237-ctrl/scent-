@@ -1,5 +1,7 @@
 # 馥屿展示 / 试运营版上线计划
 
+> 历史方案：当前商业主生产已切换为 Vercel 完整 `dist/` + API。本文只描述 Netlify `dist-public/` 应急只读降级包，不得作为当前商业部署说明。
+
 更新日期：2026-05-12
 
 ## 当前决策
@@ -281,8 +283,8 @@ npm run launch:check
    - 不暴露本地开发密钥。
 2. 如果部署 Node 服务：
    - `NODE_ENV=production`
-   - `PAYMENT_WEBHOOK_SECRET` 必须是强随机值。
-   - `SEED_ADMIN_PASSWORD` 不能使用本地默认值。
+   - 不配置开发用 `PAYMENT_WEBHOOK_SECRET`。
+   - 不通过 `SEED_ADMIN_PASSWORD` 创建生产管理员。
    - cookie 使用 `Secure`。
    - 加安全响应头。
 3. 检查外链打开策略，外部链接使用安全属性。

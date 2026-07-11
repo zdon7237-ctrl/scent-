@@ -108,7 +108,14 @@ function checkNetlify(label, text, options = {}) {
 }
 
 function checkVercel(label, config, options = {}) {
-  const { expectedOutput, expectedBuildFragments = ["npm run launch:strict"], expectedRewriteDestination } = options;
+  const {
+    expectedOutput,
+    expectedBuildFragments = ["npm run build"],
+    expectedRewriteDestination,
+    expectedProductRewriteDestination,
+    expectedFunctionIncludes = {}
+  } = options;
+  const buildCommand = String(config.buildCommand || "");
   if (config.outputDirectory !== expectedOutput) {
     failures.push(`${label} outputDirectory should be ${expectedOutput}`);
   }
@@ -116,12 +123,17 @@ function checkVercel(label, config, options = {}) {
     failures.push(`${label} installCommand should run npm ci`);
   }
   for (const fragment of expectedBuildFragments) {
-    if (!String(config.buildCommand || "").includes(fragment)) {
+    if (!buildCommand.includes(fragment)) {
       failures.push(`${label} buildCommand should run ${fragment}`);
     }
   }
-  if (String(config.buildCommand || "").includes("npm run launch:ready")) {
+  if (buildCommand.includes("npm run launch:ready")) {
     failures.push(`${label} buildCommand should not run npm run launch:ready; it is a local release gate`);
+  }
+  for (const forbidden of ["db:migrate", "db:seed", "launch:strict", "build:public", "dist-public"]) {
+    if (buildCommand.includes(forbidden)) {
+      failures.push(`${label} buildCommand must not run ${forbidden}; migrations and fallback builds are separate release steps`);
+    }
   }
   if (expectedRewriteDestination) {
     const rewrites = Array.isArray(config.rewrites) ? config.rewrites : [];
@@ -130,6 +142,44 @@ function checkVercel(label, config, options = {}) {
     });
     if (!hasApiRewrite) {
       failures.push(`${label} should rewrite /api/(.*) to ${expectedRewriteDestination}`);
+    }
+  }
+  if (expectedProductRewriteDestination) {
+    const rewrites = Array.isArray(config.rewrites) ? config.rewrites : [];
+    const hasProductRewrite = rewrites.some((rewrite) => {
+      return rewrite.source === "/products/:slug" && rewrite.destination === expectedProductRewriteDestination;
+    });
+    if (!hasProductRewrite) {
+      failures.push(`${label} should rewrite /products/:slug to ${expectedProductRewriteDestination}`);
+    }
+  }
+  const hasSitemapRewrite = (config.rewrites || []).some((rewrite) => {
+    return rewrite.source === "/sitemap.xml" && rewrite.destination === "/api/sitemap";
+  });
+  if (!hasSitemapRewrite) {
+    failures.push(`${label} should rewrite /sitemap.xml to /api/sitemap so the production sitemap follows database products`);
+  }
+  const hasReservationCron = (config.crons || []).some((cron) => {
+    return cron.path === "/api/internal/release-expired-reservations" && cron.schedule === "*/10 * * * *";
+  });
+  if (!hasReservationCron) {
+    failures.push(`${label} should release expired stock reservations every 10 minutes`);
+  }
+  const hasLegacyProductRedirect = (config.redirects || []).some((redirect) => {
+    return redirect.source === "/product-:slug.html"
+      && redirect.destination === "/products/:slug"
+      && redirect.permanent === true;
+  });
+  if (!hasLegacyProductRedirect) {
+    failures.push(`${label} should permanently redirect /product-:slug.html to /products/:slug`);
+  }
+  for (const [functionPath, expectedFiles] of Object.entries(expectedFunctionIncludes)) {
+    const includeFiles = config.functions?.[functionPath]?.includeFiles;
+    const included = Array.isArray(includeFiles) ? includeFiles : [includeFiles].filter(Boolean);
+    for (const expectedFile of expectedFiles) {
+      if (!included.includes(expectedFile)) {
+        failures.push(`${label} functions.${functionPath}.includeFiles should include ${expectedFile}`);
+      }
     }
   }
   checkHeaderSet(label, "/(.*)", sourceHeaders(config, "/(.*)"));
@@ -160,6 +210,7 @@ function checkCiWorkflow(text) {
     "for file in tests/*.test.mjs",
     "npm run launch:preflight",
     "npm run launch:strict",
+    "Verify commercial Vercel deployment contract",
     "PUBLIC_OUTPUT_DIR: /tmp/scent-atoll-ci-strict",
     "SITE_URL: https://www.scent-atoll.test",
     "CONTACT_EMAIL: hello@scent-atoll.test",
@@ -174,6 +225,46 @@ function checkCiWorkflow(text) {
   }
   if (text.includes("npm run launch:ready")) {
     failures.push(".github/workflows/scent-atoll-ci.yml should not run npm run launch:ready; it is a local release gate");
+  }
+}
+
+function checkReleaseWorkflow(text) {
+  const requiredFragments = [
+    "workflow_dispatch:",
+    "environment: production",
+    "concurrency:",
+    "VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}",
+    "VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}",
+    "VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}",
+    "PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}",
+    "npm install --global vercel@55.0.0",
+    "Validate release controls",
+    "vercel pull --yes --environment=production",
+    "vercel env pull /tmp/scent-atoll-production.env",
+    "vercel env pull /tmp/scent-atoll-preview.env",
+    "scripts/check-launch-env.mjs",
+    "scripts/check-environment-isolation.mjs",
+    "ALLOW_RELEASE_MIGRATION: production",
+    "scripts/release-migrate.mjs",
+    "vercel build --prod",
+    "vercel deploy --prebuilt --prod --skip-domain",
+    "scripts/check-commercial-deployment.mjs",
+    "vercel promote",
+    "DEPLOYMENT_URL: ${{ env.PRODUCTION_URL }}"
+  ];
+  for (const fragment of requiredFragments) {
+    if (!text.includes(fragment)) failures.push(`.github/workflows/scent-atoll-release.yml should include ${fragment}`);
+  }
+  if (text.includes("db:seed")) {
+    failures.push(".github/workflows/scent-atoll-release.yml must not seed a release database");
+  }
+
+  const migrationIndex = text.indexOf("scripts/release-migrate.mjs");
+  const deploymentIndex = text.indexOf("vercel deploy --prebuilt --prod --skip-domain");
+  const verificationIndex = text.indexOf("scripts/check-commercial-deployment.mjs", deploymentIndex);
+  const promotionIndex = text.indexOf("vercel promote", deploymentIndex);
+  if (!(migrationIndex !== -1 && migrationIndex < deploymentIndex && deploymentIndex < verificationIndex && verificationIndex < promotionIndex)) {
+    failures.push(".github/workflows/scent-atoll-release.yml must run migration, candidate deploy, verification, then promotion in that order");
   }
 }
 
@@ -194,6 +285,7 @@ if (!String(projectPackage.engines?.node || "").includes(">=22")) {
 checkScript(projectPackage, "build", ["node scripts/build-site.mjs"]);
 checkScript(projectPackage, "build:public", ["node scripts/build-public.mjs"]);
 checkScript(projectPackage, "check:deploy", ["node scripts/check-deploy-config.mjs"]);
+checkScript(projectPackage, "check:isolation", ["node scripts/check-environment-isolation.mjs"]);
 checkScript(projectPackage, "check:env", ["node scripts/check-launch-env.mjs"]);
 checkScript(projectPackage, "check:git-release", ["node scripts/check-git-release.mjs"]);
 checkScript(projectPackage, "check:live", ["node scripts/check-live.mjs"]);
@@ -228,6 +320,13 @@ checkScript(projectPackage, "test", ["node --test tests/*.test.mjs"]);
 const ciWorkflow = await readRequired(path.join(repoRoot, ".github/workflows/scent-atoll-ci.yml"));
 checkCiWorkflow(ciWorkflow);
 
+const releaseWorkflow = await readRequired(path.join(repoRoot, ".github/workflows/scent-atoll-release.yml"));
+checkReleaseWorkflow(releaseWorkflow);
+
+await readRequired(path.join(projectRoot, "scripts/release-migrate.mjs"));
+await readRequired(path.join(projectRoot, "scripts/check-commercial-deployment.mjs"));
+await readRequired(path.join(projectRoot, "scripts/check-environment-isolation.mjs"));
+
 const projectNetlify = await readRequired(path.join(projectRoot, "netlify.toml"));
 checkNetlify("网页制作/netlify.toml", projectNetlify);
 
@@ -237,15 +336,25 @@ checkNetlify("netlify.toml", repoNetlify, { requireBase: true });
 const projectVercel = parseJson("网页制作/vercel.json", await readRequired(path.join(projectRoot, "vercel.json")));
 checkVercel("网页制作/vercel.json", projectVercel, {
   expectedOutput: "dist",
-  expectedBuildFragments: ["npm run check:env", "npm run db:migrate", "npm run db:seed", "npm run build"],
-  expectedRewriteDestination: "/api/[...path].mjs"
+  expectedBuildFragments: ["npm run check:env", "npm run check:deploy", "npm run build"],
+  expectedRewriteDestination: "/api/[...path]",
+  expectedProductRewriteDestination: "/api/product-page?slug=:slug",
+  expectedFunctionIncludes: {
+    "api/[...path].mjs": ["src/assets/data.js"],
+    "api/product-page.mjs": ["dist/product.html", "src/assets/data.js"]
+  }
 });
 
 const repoVercel = parseJson("vercel.json", await readRequired(path.join(repoRoot, "vercel.json")));
 checkVercel("vercel.json", repoVercel, {
   expectedOutput: "网页制作/dist",
-  expectedBuildFragments: ["cd 网页制作", "npm run check:env", "npm run db:migrate", "npm run db:seed", "npm run build"],
-  expectedRewriteDestination: "/api/[...path].mjs"
+  expectedBuildFragments: ["cd 网页制作", "npm run check:env", "npm run check:deploy", "npm run build"],
+  expectedRewriteDestination: "/api/[...path]",
+  expectedProductRewriteDestination: "/api/product-page?slug=:slug",
+  expectedFunctionIncludes: {
+    "api/[...path].mjs": ["网页制作/src/assets/data.js"],
+    "api/product-page.mjs": ["网页制作/dist/product.html", "网页制作/src/assets/data.js"]
+  }
 });
 if (!String(repoVercel.installCommand || "").includes("cd 网页制作")) {
   failures.push("vercel.json installCommand should install from 网页制作/");

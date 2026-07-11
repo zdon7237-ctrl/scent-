@@ -10,6 +10,8 @@
     "build": "node scripts/build-site.mjs",
     "build:public": "node scripts/build-public.mjs",
     "check:deploy": "node scripts/check-deploy-config.mjs",
+    "check:isolation": "node scripts/check-environment-isolation.mjs",
+    "check:commercial": "node scripts/check-commercial-deployment.mjs",
     "check:env": "node scripts/check-launch-env.mjs",
     "check:git-release": "node scripts/check-git-release.mjs",
     "check:public": "node scripts/check-public-build.mjs",
@@ -21,16 +23,21 @@
     "launch:strict": "npm run check:env && npm run build:public && node scripts/check-public-build.mjs --strict && npm run check:deploy",
     "db:migrate": "node scripts/migrate.mjs",
     "db:seed": "node scripts/seed.mjs",
+    "db:bootstrap-commerce": "node scripts/bootstrap-commerce.mjs",
+    "db:bootstrap-owner": "node scripts/bootstrap-owner.mjs",
+    "release:migrate": "node scripts/release-migrate.mjs",
     "prestart": "npm run build",
     "start": "node server/src/app.mjs",
     "serve": "eleventy --serve",
     "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {
-    "@11ty/eleventy": "^3.0.0",
-    "esbuild": "^0.28.0"
+    "@11ty/eleventy": "^3.1.6",
+    "esbuild": "^0.28.1"
   },
   "dependencies": {
-    "pg": "^8.20.0"
+    "@vercel/blob": "^2.6.1",
+    "pg": "^8.20.0",
+    "resend": "^6.17.2"
   }
 }

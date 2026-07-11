@@ -11,6 +11,7 @@ export function getPointsMallItem(id) {
 export function redeemPointsMallItem(payload) {
   return apiFetch("/api/points-mall/redeem", {
     method: "POST",
+    headers: { "idempotency-key": payload.idempotencyKey || payload.requestId },
     body: payload
   });
 }

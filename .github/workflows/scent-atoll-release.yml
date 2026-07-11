@@ -1,0 +1,99 @@
+name: Scent Atoll Production Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type RELEASE to run the production migration and promotion workflow
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scent-atoll-production-release
+  cancel-in-progress: false
+
+jobs:
+  migrate-verify-promote:
+    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'RELEASE'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_ENV: production
+      PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: 网页制作/.nvmrc
+          cache: npm
+          cache-dependency-path: 网页制作/package-lock.json
+
+      - name: Install application dependencies
+        working-directory: 网页制作
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@55.0.0
+
+      - name: Validate release controls
+        run: |
+          test -n "$VERCEL_TOKEN"
+          test -n "$VERCEL_ORG_ID"
+          test -n "$VERCEL_PROJECT_ID"
+          test -n "$PRODUCTION_URL"
+
+      - name: Pull production project settings and environment
+        run: |
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel env pull /tmp/scent-atoll-production.env --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel env pull /tmp/scent-atoll-preview.env --yes --environment=preview --token="$VERCEL_TOKEN"
+
+      - name: Validate production environment contract
+        working-directory: 网页制作
+        run: node --env-file=/tmp/scent-atoll-production.env scripts/check-launch-env.mjs
+
+      - name: Verify Production and Preview resource isolation
+        working-directory: 网页制作
+        run: node scripts/check-environment-isolation.mjs /tmp/scent-atoll-production.env /tmp/scent-atoll-preview.env
+
+      - name: Apply and verify production migration
+        working-directory: 网页制作
+        env:
+          ALLOW_RELEASE_MIGRATION: production
+        run: node --env-file=/tmp/scent-atoll-production.env scripts/release-migrate.mjs
+
+      - name: Build production-target candidate
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy candidate without assigning the production domain
+        id: candidate
+        run: |
+          candidate_url="$(vercel deploy --prebuilt --prod --skip-domain --token="$VERCEL_TOKEN")"
+          echo "url=$candidate_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify candidate pages, API, database access, and auth boundary
+        working-directory: 网页制作
+        env:
+          DEPLOYMENT_URL: ${{ steps.candidate.outputs.url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node scripts/check-commercial-deployment.mjs
+
+      - name: Promote the verified candidate
+        run: vercel promote "${{ steps.candidate.outputs.url }}" --yes --token="$VERCEL_TOKEN"
+
+      - name: Verify the production alias
+        working-directory: 网页制作
+        env:
+          DEPLOYMENT_URL: ${{ env.PRODUCTION_URL }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node scripts/check-commercial-deployment.mjs

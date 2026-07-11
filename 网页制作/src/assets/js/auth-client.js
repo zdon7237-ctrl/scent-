@@ -25,12 +25,36 @@ export async function registerMember(payload) {
   return result;
 }
 
+export function verifyEmail(token) {
+  return apiFetch("/api/auth/verify-email", { method: "POST", body: { token } });
+}
+
+export function resendVerification(email) {
+  return apiFetch("/api/auth/resend-verification", { method: "POST", body: { email } });
+}
+
+export function requestPasswordReset(email) {
+  return apiFetch("/api/auth/request-password-reset", { method: "POST", body: { email } });
+}
+
+export function resetPassword(token, password) {
+  return apiFetch("/api/auth/reset-password", { method: "POST", body: { token, password } });
+}
+
+export function revokeOtherSessions() {
+  return apiFetch("/api/auth/sessions/revoke-others", { method: "POST" });
+}
+
+export function deleteMemberAccount(password) {
+  return apiFetch("/api/member/account", { method: "DELETE", body: { password } });
+}
+
 export async function loginMember(payload) {
   const result = await apiFetch("/api/auth/login", {
     method: "POST",
     body: payload
   });
-  cachedSession = result;
+  cachedSession = result.accountType === "member" ? result : { user: null };
   return result;
 }
 

@@ -48,6 +48,8 @@ const privateFiles = [
   "member.html",
   "membership.html",
   "checkout.html",
+  "verify-email.html",
+  "reset-password.html",
   "orders.html",
   "points.html",
   "points-mall.html",
@@ -55,7 +57,7 @@ const privateFiles = [
   "points-redemptions.html"
 ];
 
-const privateRoutePattern = /^(?:admin|account|login|register|member|membership|checkout|orders|points)(?:[-.]|$)/;
+const privateRoutePattern = /^(?:admin|account|login|register|member|membership|checkout|verify-email|reset-password|orders|points)(?:[-.]|$)/;
 
 await Promise.all(privateFiles.map((file) => rm(path.join(outputPath, file), { force: true })));
 const topLevelOutputFiles = await readdir(outputPath, { withFileTypes: true });

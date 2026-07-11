@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -81,7 +81,7 @@ describe("public build launch metadata gate", () => {
     }
   });
 
-  it("rejects checkout pages in the public build", () => {
+  it("removes transaction and credential-recovery pages from the public build", () => {
     const outputDir = mkdtempSync(path.join(tmpdir(), "scent-atoll-public-checkout-test-"));
     const env = {
       ...validLaunchEnv,
@@ -92,11 +92,26 @@ describe("public build launch metadata gate", () => {
       const build = runNode(["scripts/build-public.mjs"], env);
       assert.equal(build.status, 0, build.stderr);
 
+      for (const file of ["checkout.html", "verify-email.html", "reset-password.html"]) {
+        assert.equal(existsSync(path.join(outputDir, file)), false, `${file} should not be published`);
+      }
+      const redirects = readFileSync(path.join(outputDir, "_redirects"), "utf8");
+      assert.match(redirects, /^\/product-\*\.html \/products\/:splat 301!$/m);
+      assert.match(redirects, /^\/products\/\* \/product\.html\?id=:splat 200$/m);
+
+      const sitemap = readFileSync(path.join(outputDir, "sitemap.xml"), "utf8");
+      assert.match(sitemap, /\/products\/vespree/);
+      assert.doesNotMatch(sitemap, /\/product-vespree\.html/);
+
       copyFileSync(path.join(outputDir, "index.html"), path.join(outputDir, "checkout.html"));
+      copyFileSync(path.join(outputDir, "index.html"), path.join(outputDir, "verify-email.html"));
+      copyFileSync(path.join(outputDir, "index.html"), path.join(outputDir, "reset-password.html"));
 
       const check = runNode(["scripts/check-public-build.mjs"], env);
       assert.notEqual(check.status, 0);
       assert.match(check.stderr, /Forbidden private file in public build: checkout\.html/);
+      assert.match(check.stderr, /Forbidden private file in public build: verify-email\.html/);
+      assert.match(check.stderr, /Forbidden private file in public build: reset-password\.html/);
     } finally {
       rmSync(outputDir, { recursive: true, force: true });
     }

@@ -1,5 +1,5 @@
 import { cartStore } from "./cart-store.js";
-import { formatPrice, imageStyle } from "./catalog.js";
+import { formatPrice } from "./catalog.js";
 
 function $(selector, root = document) {
   return root.querySelector(selector);
@@ -9,9 +9,24 @@ function $all(selector, root = document) {
   return Array.from(root.querySelectorAll(selector));
 }
 
+function escapeHtml(value = "") {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function safeImageStyle(value) {
+  const cssString = JSON.stringify(String(value || "")).replaceAll("<", "\\u003c");
+  return `style="--image:url(${escapeHtml(cssString)})"`;
+}
+
 export function cartMarkup(compact = true) {
   const entries = cartStore.getItems();
   const total = cartStore.getSubtotal();
+  const publicFallback = document.body.dataset.publicBuild === "true";
 
   if (!entries.length) {
     return `
@@ -30,14 +45,14 @@ export function cartMarkup(compact = true) {
     <div class="cart-list">
       ${entries.map(({ item, qty, lineTotal }) => `
         <article class="cart-row">
-          <div class="cart-row-image" ${imageStyle(item.image)}></div>
+          <div class="cart-row-image" ${safeImageStyle(item.image)}></div>
           <div>
-            <h3>${item.name}</h3>
-            <p>${item.brand || "Scent Atoll"} · ${formatPrice(item.price)}</p>
+            <h3>${escapeHtml(item.name)}</h3>
+            <p>${escapeHtml(item.brand || "Scent Atoll")} · ${formatPrice(item.price)}</p>
             <div class="qty-control">
-              <button type="button" data-cart-change="${item.id}" data-delta="-1" aria-label="减少数量">-</button>
+              <button type="button" data-cart-change="${escapeHtml(item.id)}" data-delta="-1" aria-label="减少数量">-</button>
               <span>${qty}</span>
-              <button type="button" data-cart-change="${item.id}" data-delta="1" aria-label="增加数量">+</button>
+              <button type="button" data-cart-change="${escapeHtml(item.id)}" data-delta="1" aria-label="增加数量">+</button>
             </div>
           </div>
           <strong>${formatPrice(lineTotal)}</strong>
@@ -48,8 +63,8 @@ export function cartMarkup(compact = true) {
       <span>意向小计</span>
       <strong>${formatPrice(total)}</strong>
     </div>
-    <div class="member-quote" data-member-quote>试运营期间暂不开放在线支付，清单仅用于人工咨询与预约试香。</div>
-    <a class="button button-primary full" href="service.html">预约人工咨询</a>
+    <div class="member-quote" data-member-quote>${publicFallback ? "当前为只读展示模式，请联系客服确认购买。" : "提交订单后，通过客服微信完成人工转账。"}</div>
+    <a class="button button-primary full" href="${publicFallback ? "service.html" : "checkout.html"}">${publicFallback ? "预约人工咨询" : "填写收货信息"}</a>
     ${compact ? `<a class="text-link" href="cart.html">查看完整意向清单</a>` : `<p class="service-note">提交前无需支付。顾问会根据清单协助确认试香、库存和后续购买方式。</p>`}
   `;
 }

@@ -1,98 +1,80 @@
-# 馥屿上线变量收集表
+# 馥屿商业部署变量收集表
 
-更新日期：2026-05-12
+更新日期：2026-07-10
 
-这张表用于正式部署前收集运营信息。它不包含香水商品内容和图片。
+真实 secret 只录入 Vercel 或 GitHub Environment，不要发在聊天、工单正文或提交到 Git。变量名与格式参考 `.env.production.example` 和 `.env.preview.example`。
 
-## 直接回复模板
-
-把下面 3 项真实值发给开发 / 部署负责人即可继续严格上线检查：
+## 公开运营信息
 
 ```text
-SITE_URL=https://scentatoll.com
-CONTACT_EMAIL=1244470336@qq.com
-CONTACT_WECHAT=xxx70336
-```
-
-可选项如果暂时没有，可以先不填：
-
-```text
-BUSINESS_NAME=馥屿 Scent Atoll
-STUDIO_BOOKING=通过客服微信预约
-CUSTOMER_HOURS=12:00 - 20:00
-OG_IMAGE=
-```
-
-`SITE_URL` 必须填正式 `https://` 域名根地址，例如 `https://www.example.com`。不要填写平台预览域名、带路径的页面地址、查询参数或 `#`。
-`BUSINESS_NAME` 不填时会使用已确认的店名 `馥屿 Scent Atoll`；如果你有正式经营主体名称，可以填写它覆盖默认值。
-`STUDIO_BOOKING` 不填时会使用 `通过客服微信预约`；如果你有预约表单、小红书私信或其他方式，可以填写它覆盖默认值。
-
-## 必填项
-
-| 变量 | 要填写的真实值 | 检查标准 |
-|---|---|---|
-| `SITE_URL` | https://scentatoll.com | 必须是正式 `https://` 域名根地址，不要带末尾 `/`、路径、查询参数或 `#`，例如 `https://www.example.com` |
-| `CONTACT_EMAIL` | 1244470336@qq.com | 必须是可接收客服和隐私请求的邮箱 |
-| `CONTACT_WECHAT` | xxx70336 | 必须是正式客服微信号或清晰的添加方式 |
-
-## 建议项
-
-| 变量 | 要填写的真实值 | 检查标准 |
-|---|---|---|
-| `BUSINESS_NAME` | 馥屿 Scent Atoll | 可选；不填时使用店名，填写时必须是对外可展示的经营主体名称 |
-| `STUDIO_BOOKING` | 通过客服微信预约 | 可选；不填时使用客服微信预约，填写时应是工作室试香预约方式，例如微信预约、表单链接或小红书私信 |
-| `CUSTOMER_HOURS` | 12:00 - 20:00 | 客服时间；不填时网站默认显示 `12:00 - 20:00` |
-| `OG_IMAGE` |  | 可选；不填时使用站内 `/og-image.png`，填写时必须是 `https://` PNG、JPG 或 WebP 图片 URL |
-
-## 部署平台环境变量格式
-
-填完后，在 Netlify、Vercel 或 Cloudflare Pages 的环境变量里设置：
-
-```text
-SITE_URL=https://scentatoll.com
-CONTACT_EMAIL=1244470336@qq.com
-CONTACT_WECHAT=xxx70336
+SITE_URL=https://正式主域名
+APP_ORIGIN=https://正式主域名
+CONTACT_EMAIL=客服邮箱
+CONTACT_WECHAT=客服微信
+BUSINESS_NAME=真实经营主体名称
+STUDIO_BOOKING=预约方式
 CUSTOMER_HOURS=12:00 - 20:00
 ```
 
-如果有正式分享图，再额外设置：
+`SITE_URL` 与 `APP_ORIGIN` 必须是相同的 HTTPS 根地址，不带路径、查询参数、hash 或末尾 `/`。Production 的 `BUSINESS_NAME` 必须是真实经营主体，不能只填品牌名。`OG_IMAGE` 可选，必须是 HTTPS PNG/JPG/WebP URL。
+
+## Production Secret
+
+由部署负责人直接录入 Vercel Production：
 
 ```text
-OG_IMAGE=
+DEPLOYMENT_ENV=production
+DATA_RESIDENCY_DECISION=<cross_border_approved 或 domestic_infrastructure>
+DATABASE_URL=<Neon Production>
+RESEND_API_KEY=<Resend Production>
+EMAIL_FROM=<已验证发件人>
+BLOB_READ_WRITE_TOKEN=<Production Blob>
+UPSTASH_REDIS_REST_URL=<Production Upstash>
+UPSTASH_REDIS_REST_TOKEN=<Production Upstash>
+WECHAT_PAY_ENABLED=false
 ```
 
-不要把 `.env.production.example` 里的“你的...”占位直接复制到部署平台。严格门禁会拒绝这些占位。
+可选：`EMAIL_REPLY_TO`。告警使用 `ERROR_WEBHOOK_URL` + `ERROR_WEBHOOK_TOKEN`，两者必须成对配置。不要设置 `SEED_ADMIN_EMAIL`、`SEED_ADMIN_PASSWORD` 或开发用 `PAYMENT_WEBHOOK_SECRET`。
 
-## 填完后的验证
+`cross_border_approved` 表示已完成大陆用户个人信息跨境存储评估并获准使用境外基础设施；`domestic_infrastructure` 表示账号、地址和订单数据已迁移到境内基础设施。评估仍在进行时不要填写任一值，也不要发布交易功能。
 
-在 `网页制作/` 下运行：
+## Preview Secret
+
+Vercel Preview 使用同名变量，但值必须来自独立 Neon 分支、预览 Blob/前缀、预览 Upstash 和 Resend 测试环境，并设置：
+
+```text
+DEPLOYMENT_ENV=preview
+```
+
+Vercel 的 Production 与 Preview 都不要设置 `PAYMENT_WEBHOOK_SECRET`。开发支付 webhook 在部署环境关闭；Preview 的人工收款测试通过后台确认收款完成。
+
+第一阶段保持 `WECHAT_PAY_ENABLED=false`。只有商户号、AppID、商户证书序列号/私钥、API v3 密钥、通知 URL、平台证书序列号/公钥全部齐全后，才设为 `true`；门禁会在启用时强制检查全部八项。
+
+不得把 Production secret 同时勾选到 Preview。Preview 域名不提交搜索引擎，也不对外传播。
+
+## GitHub Production Environment
+
+Secrets：`VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`，开启 Deployment Protection 时再设置 `VERCEL_AUTOMATION_BYPASS_SECRET`。
+
+Variable：
+
+```text
+PRODUCTION_URL=https://正式主域名
+```
+
+Environment 必须启用 required reviewer 且只允许 `main`。
+
+## 验证
+
+平台环境由 Vercel build 自动执行 `npm run check:env`。本地仅用临时文件验证变量结构，不把真实值写入 Git：
 
 ```bash
-npm run launch:status
-npm run check:env
-npm run launch:strict
+vercel env pull /tmp/scent-atoll-production.env --yes --environment=production
+vercel env pull /tmp/scent-atoll-preview.env --yes --environment=preview
+cd 网页制作
+VERCEL_ENV=production node --env-file=/tmp/scent-atoll-production.env scripts/check-launch-env.mjs
+npm run check:isolation -- /tmp/scent-atoll-production.env /tmp/scent-atoll-preview.env
+npm run check:deploy
 ```
 
-`launch:status` 是只读状态检查，用于快速确认是否还缺真实运营变量、Git 发布交接或全仓补丁空白检查。
-
-如果部署平台从 GitHub 拉取代码，并且本次上线改动已经提交并推送到目标分支，发布前再运行本地最终组合门禁：
-
-```bash
-npm run launch:ready
-```
-
-`launch:ready` 会先检查 Git 发布状态和整个仓库的补丁空白问题，再运行测试 / 普通构建 / 公开包检查和严格上线构建。平台 build command 仍然使用 `npm run launch:strict`。
-
-部署后运行：
-
-```bash
-SITE_URL=https://你的正式域名 CONTACT_EMAIL=你的客服邮箱 CONTACT_WECHAT=你的客服微信 npm run check:live
-```
-
-也可以带上本表中的可选主体、预约方式和客服时间信息运行，确认线上页面展示的是同一组正式值：
-
-```bash
-SITE_URL=https://你的正式域名 CONTACT_EMAIL=你的客服邮箱 CONTACT_WECHAT=你的客服微信 BUSINESS_NAME=你的经营主体名称 STUDIO_BOOKING=你的预约方式 CUSTOMER_HOURS="12:00 - 20:00" npm run check:live
-```
-
-只有这两步都通过，才进入正式对外发布。
+完整迁移、候选部署、验证、promote 与回滚步骤见 `launch-runbook.md`。

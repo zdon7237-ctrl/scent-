@@ -1,13 +1,14 @@
 # 馥屿真实线上平台改造计划
 
-更新日期：2026-05-06
+更新日期：2026-07-10
 
 ## 当前结论
 
-项目当前实际位于仓库的 `网页制作/` 子目录里，已经从纯静态展示页发展成一个可本地运行的电商开发版：
+项目位于仓库的 `网页制作/` 子目录，主生产部署目标已经确定为 Vercel 完整商业应用：
 
 ```text
-Eleventy 静态页面 + 本地 Node API + JSON 数据库 + 会员/订单/积分/积分商城闭环
+Eleventy 页面 + Vercel Node API + Neon PostgreSQL
++ 会员/订单/积分/积分商城/运营后台
 ```
 
 下一阶段目标不是继续堆页面，而是把系统从“本地演示可用”改造成“真实线上可运营”。优先级应当围绕五件事：
@@ -18,18 +19,15 @@ Eleventy 静态页面 + 本地 Node API + JSON 数据库 + 会员/订单/积分/
 4. 支付可信。
 5. 订单履约完整。
 
-推荐路线调整为：
+当前执行路线为：
 
 ```text
-测试和 CI 兜底
--> PostgreSQL + repository + migration
--> 后台安全和生产账号策略
--> 真实结账基础：地址、商品最小表、SKU、库存预留、订单快照
--> 真实支付
--> 发货、物流、退款、售后
--> 部署、监控、备份
--> 商品/品牌/内容后台化
--> 合规和运营准备
+PostgreSQL 细粒度事务与并发保护
+-> 地址、库存预留、订单快照、人工收款与履约闭环
+-> 账号安全、邮件、Blob、Redis 限流和告警
+-> Vercel Preview 隔离与 production candidate 发布门禁
+-> 备份恢复、回滚和合规验收
+-> 商户资质完成后接微信支付 API v3
 ```
 
 核心原则：用户进入真实支付前，系统必须已经有可靠的收货地址、商品价格、上下架状态、库存策略和订单金额快照。
@@ -247,7 +245,7 @@ coupons、coupon_redemptions 等当前已有数据结构；
 admin_users + admin_sessions + role permission
 ```
 
-本地 seed 管理员只能用于开发；生产环境必须显式设置安全的 `SEED_ADMIN_PASSWORD`，且不能等于默认开发密码。若后续保留任何调试开关，也必须满足：
+本地 seed 管理员只能用于开发。Production 不得设置 `SEED_ADMIN_EMAIL` 或 `SEED_ADMIN_PASSWORD`，初始 owner 通过一次性 bootstrap 流程创建。若保留任何调试开关，也必须满足：
 
 ```text
 NODE_ENV !== "production"
@@ -475,54 +473,48 @@ pending_payment -> paid -> processing -> shipped -> completed
 
 ### 目标
 
-让系统可以稳定运行在真实服务器或云平台。
+让系统通过可审计、可验证、可回滚的门禁稳定运行在 Vercel 与托管数据服务上。
 
 ### 环境变量
 
-至少需要：
+商业版至少需要：
 
 ```text
-NODE_ENV
-PORT
-PUBLIC_DIR
-DATABASE_URL
-SESSION_SECRET
-ADMIN_SESSION_SECRET
-PAYMENT_PROVIDER
-PAYMENT_WEBHOOK_SECRET
-PAYMENT_MERCHANT_ID
-PAYMENT_PRIVATE_KEY
+DEPLOYMENT_ENV
+SITE_URL
 APP_ORIGIN
-COOKIE_SECURE
-BODY_SIZE_LIMIT
+DATABASE_URL
+RESEND_API_KEY
+EMAIL_FROM
+BLOB_READ_WRITE_TOKEN
+UPSTASH_REDIS_REST_URL
+UPSTASH_REDIS_REST_TOKEN
 ```
 
 ### 部署建议
 
-第一版可以采用：
+主生产固定采用：
 
 ```text
-Node 服务 + PostgreSQL + 对象存储/CDN + HTTPS 反向代理
+Vercel 完整 dist + Node Function
++ Neon PostgreSQL + Vercel Blob + Upstash + Resend
 ```
 
 部署前必须有：
 
-1. 生产环境构建命令。
-2. 生产启动命令。
-3. 数据库迁移命令。
-4. 日志输出。
-5. 错误监控。
-6. 数据库自动备份。
-7. 迁移回滚或备份恢复方案。
-8. 健康检查接口。
+1. Production / Preview 环境和托管资源完全隔离。
+2. Vercel build 只校验和构建，不执行 migration 或 seed。
+3. 受保护工作流按 migration、production-target candidate、验证、promote 执行。
+4. 日志、错误告警、数据库自动备份与恢复演练。
+5. 应用 rollback 与只读 `dist-public` 应急降级方案。
 
 ### 验收
 
-- 新环境从空数据库迁移后可启动。
+- 新环境从空数据库显式迁移后可启动，缺少 `DATABASE_URL` 时生产直接失败。
 - 健康检查接口可用。
 - 服务重启后用户和订单数据不丢。
 - 错误日志可追踪到请求和用户/订单上下文。
-- 上线前有数据库备份和回滚步骤。
+- 上线前有数据库备份、候选验证、应用回滚和数据恢复步骤。
 
 ## 阶段 7：商品、品牌和内容后台化
 
@@ -668,23 +660,23 @@ Node 服务 + PostgreSQL + 对象存储/CDN + HTTPS 反向代理
 
 1. 加发货、物流、退款和售后基础能力。
 2. 配置生产环境变量。
-3. 部署 Node 服务和 PostgreSQL。
-4. 配 HTTPS。
+3. 通过 Vercel production candidate 发布完整应用和 Neon PostgreSQL。
+4. 配置正式域名与 HTTPS。
 5. 加日志、监控、备份。
 6. 做上线前安全、合规、移动端和购买链路走查。
 
 ## 当前下一步
 
-最推荐马上做：
+当前最优先完成：
 
 ```text
-阶段 1：PostgreSQL + migration + repository + 事务 + 测试迁移
+PostgreSQL 事务/并发收口 + Preview 隔离 + production candidate 发布验收
 ```
 
 原因：
 
-- 数据库是线上平台地基。
-- 现有业务测试已经能保护核心规则。
-- 支付、后台权限、库存预留和履约都依赖可靠数据库事务。
+- Vercel 主生产架构已确定，但只有数据库事务和发布门禁同时可靠才可承载真实订单。
+- migration 必须与 build 分离，Preview 与 Production 必须使用不同托管资源。
+- 完成订单到退款、备份恢复和告警演练后，才能开放商业试运营。
 
-完成后再进入后台安全和生产账号策略，然后先补真实结账基础，最后接真实支付。
+商户资质完成前保留人工收款；微信支付 API v3 在第二阶段单独启用。

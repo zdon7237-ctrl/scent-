@@ -24,7 +24,7 @@ const checks = [
     command: process.execPath,
     args: ["scripts/check-launch-env.mjs"],
     cwd: projectRoot,
-    next: "Fill SITE_URL, CONTACT_EMAIL, and CONTACT_WECHAT. BUSINESS_NAME and STUDIO_BOOKING have safe defaults."
+    next: "Fill launch identity values and, for Vercel Preview/Production, configure the isolated database, email, Blob, and Redis services."
   },
   {
     name: "Git release handoff",
@@ -81,9 +81,9 @@ for (const result of results) {
 const failed = results.filter((result) => !result.ok);
 if (failed.length) {
   console.error(`\nLaunch status: ${failed.length} check(s) still need attention.`);
-  console.error("After these pass, run npm run launch:ready locally, deploy with npm run launch:strict, then run npm run check:live against the production domain.");
+  console.error("After these pass, validate the isolated Vercel Preview, then use the protected Scent Atoll Production Release workflow.");
   process.exit(1);
 }
 
 console.log("\nLaunch status: local pre-release gates are clear.");
-console.log("Next: deploy with npm run launch:strict, then run SITE_URL=https://your-domain npm run check:live.");
+console.log("Next: validate the isolated Vercel Preview, then use the protected Scent Atoll Production Release workflow.");

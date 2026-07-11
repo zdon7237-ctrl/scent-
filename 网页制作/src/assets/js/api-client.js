@@ -1,10 +1,13 @@
 export async function apiFetch(path, options = {}) {
-  const response = await fetch(path, {
-    credentials: "same-origin",
-    headers: {
+  const headers = Object.fromEntries(
+    Object.entries({
       "content-type": "application/json",
       ...(options.headers || {})
-    },
+    }).filter(([, value]) => value !== undefined && value !== null && value !== "")
+  );
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    headers,
     ...options,
     body: options.body && typeof options.body !== "string"
       ? JSON.stringify(options.body)

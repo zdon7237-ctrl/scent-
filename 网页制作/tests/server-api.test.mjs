@@ -47,6 +47,7 @@ process.env.MEMBER_DB = dbFile;
 process.env.SEED_ADMIN_EMAIL = seedAdminEmail;
 process.env.SEED_ADMIN_PASSWORD = seedAdminPassword;
 process.env.PAYMENT_WEBHOOK_SECRET = "test-webhook-secret";
+process.env.CRON_SECRET = "test-reservation-cron-secret-at-least-32-characters";
 process.env.PUBLIC_DIR = path.join(projectRoot, "dist");
 
 const { server } = await import(pathToFileURL(path.join(projectRoot, "server/src/app.mjs")).href);
@@ -141,6 +142,8 @@ async function registerMember(overrides = {}) {
       phone: `139${String(Math.floor(Math.random() * 100000000)).padStart(8, "0")}`,
       password: "secret123",
       name: "测试会员",
+      acceptTerms: true,
+      acceptPrivacy: true,
       ...overrides
     }
   });
@@ -243,12 +246,15 @@ async function adminMallItem(itemId = "pm-random-sample-1") {
 }
 
 async function createOrder(cookie, quantity = 2) {
+  await api("/api/products", { expectedStatus: 200 });
   const result = await api("/api/checkout/create-order", {
     method: "POST",
     cookie,
     expectedStatus: 201,
     body: {
-      items: [{ productId: "vespree", quantity }]
+      items: [{ productId: "vespree", quantity }],
+      acceptTerms: true,
+      acceptPrivacy: true
     }
   });
   return result.payload.order;
@@ -331,6 +337,12 @@ describe("server API business rules", { concurrency: false }, () => {
   it("authenticates the seed owner admin and exposes session-scoped permissions", async () => {
     await api("/api/admin/orders", { expectedStatus: 401 });
 
+    await api("/api/admin/auth/login", {
+      method: "POST",
+      expectedStatus: 401,
+      body: { email: seedAdminEmail, password: "wrong-password" }
+    });
+
     const { cookie, admin } = await loginAdmin();
     assert.equal(admin.email, seedAdminEmail);
     assert.equal(admin.role, "owner");
@@ -350,6 +362,92 @@ describe("server API business rules", { concurrency: false }, () => {
       expectedStatus: 200
     });
     assert.match(exported.payload, /"id","name","email","phone","tier","available_points","lifetime_paid_yuan","created_at"/);
+
+    const db = await readDb();
+    const adminAttempts = db.loginAttempts.filter((item) => item.kind === "admin_login");
+    assert.equal(adminAttempts.length, 2);
+    assert.deepEqual(adminAttempts.map((item) => item.succeeded).sort(), [false, true]);
+    assert.ok(adminAttempts.every((item) => item.identityHash && !item.identityHash.includes("@")));
+  });
+
+  it("routes admin and member accounts through the shared login endpoint", async () => {
+    const adminLogin = await api("/api/auth/login", {
+      method: "POST",
+      expectedStatus: 200,
+      body: { account: seedAdminEmail, password: seedAdminPassword }
+    });
+    assert.equal(adminLogin.payload.accountType, "admin");
+    assert.equal(adminLogin.payload.destination, "admin.html#overview");
+    assert.equal(adminLogin.payload.admin.role, "owner");
+    assert.match(adminLogin.response.headers.get("set-cookie") || "", /^sa_admin_session=/);
+
+    const email = `shared-login-${Date.now()}@example.com`;
+    const password = "secret123";
+    await registerMember({ email, password });
+    const memberLogin = await api("/api/auth/login", {
+      method: "POST",
+      expectedStatus: 200,
+      body: { account: email, password }
+    });
+    assert.equal(memberLogin.payload.accountType, "member");
+    assert.equal(memberLogin.payload.destination, "account.html");
+    assert.equal(memberLogin.payload.user.email, email);
+    assert.match(memberLogin.response.headers.get("set-cookie") || "", /^sa_session=/);
+  });
+
+  it("serves a database-backed sitemap with stable product slug URLs", async () => {
+    const result = await api("/api/sitemap", { expectedStatus: 200 });
+    assert.match(result.response.headers.get("content-type") || "", /application\/xml/);
+    assert.match(result.payload, /\/products\/vespree/);
+    assert.doesNotMatch(result.payload, /product-vespree\.html/);
+  });
+
+  it("rate limits verification resend requests without revealing account existence", async () => {
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const result = await api("/api/auth/resend-verification", {
+        method: "POST",
+        expectedStatus: 200,
+        body: { email: "missing-rate-limit@example.com" }
+      });
+      assert.deepEqual(result.payload, { ok: true });
+    }
+    const blocked = await api("/api/auth/resend-verification", {
+      method: "POST",
+      expectedStatus: 429,
+      body: { email: "missing-rate-limit@example.com" }
+    });
+    assert.match(blocked.payload.error, /请求过于频繁/);
+    assert.ok(Number(blocked.response.headers.get("retry-after")) > 0);
+  });
+
+  it("releases expired order reservations only through the authenticated cron endpoint", async () => {
+    const { cookie } = await registerMember();
+    const order = await createOrder(cookie, 1);
+    const before = await readDb();
+    const reservation = before.stockReservations.find((item) => item.orderId === order.id);
+    assert.ok(reservation);
+    reservation.expiresAt = new Date(Date.now() - 60_000).toISOString();
+    await writeDb(before);
+
+    await api("/api/internal/release-expired-reservations", { expectedStatus: 401 });
+
+    const released = await api("/api/internal/release-expired-reservations", {
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET}` },
+      expectedStatus: 200
+    });
+    assert.deepEqual(released.payload, { ok: true, releasedOrders: 1 });
+
+    const after = await readDb();
+    assert.equal(after.orders.find((item) => item.id === order.id).status, "cancelled");
+    assert.equal(after.stockReservations.find((item) => item.orderId === order.id).status, "released");
+    assert.equal(after.inventoryItems.find((item) => item.id === reservation.inventoryItemId).quantityReserved, 0);
+    assert.ok(after.operationLogs.some((item) => item.action === "release_expired_reservations"));
+
+    const repeated = await api("/api/internal/release-expired-reservations", {
+      headers: { authorization: `Bearer ${process.env.CRON_SECRET}` },
+      expectedStatus: 200
+    });
+    assert.equal(repeated.payload.releasedOrders, 0);
   });
 
   it("rejects member export for support admins", async () => {
@@ -461,8 +559,10 @@ describe("server API business rules", { concurrency: false }, () => {
 
     const productId = created.payload.product.id;
     const variantId = created.payload.product.primaryVariant.id;
+    const inventoryKey = "inventory-test-once";
     const adjusted = await adminApi(`/api/admin/products/${productId}/variants/${variantId}/inventory`, {
       method: "POST",
+      headers: { "idempotency-key": inventoryKey },
       expectedStatus: 200,
       body: {
         mode: "adjust",
@@ -472,6 +572,29 @@ describe("server API business rules", { concurrency: false }, () => {
     });
     assert.equal(adjusted.payload.product.availableQuantity, 4);
     assert.equal(adjusted.payload.movement.quantityDelta, -2);
+
+    const repeatedAdjustment = await adminApi(`/api/admin/products/${productId}/variants/${variantId}/inventory`, {
+      method: "POST",
+      headers: { "idempotency-key": inventoryKey },
+      expectedStatus: 200,
+      body: {
+        mode: "adjust",
+        quantityDelta: -2,
+        reason: "manual stock correction"
+      }
+    });
+    assert.deepEqual(repeatedAdjustment.payload, adjusted.payload);
+
+    await adminApi(`/api/admin/products/${productId}/variants/${variantId}/inventory`, {
+      method: "POST",
+      headers: { "idempotency-key": inventoryKey },
+      expectedStatus: 409,
+      body: {
+        mode: "adjust",
+        quantityDelta: -1,
+        reason: "different request"
+      }
+    });
 
     const updated = await adminApi(`/api/admin/products/${productId}`, {
       method: "PATCH",
@@ -558,22 +681,23 @@ describe("server API business rules", { concurrency: false }, () => {
     });
   });
 
-  it("fails fast in production without required admin and webhook secrets", () => {
-    const missingWebhookEnv = productionEnv({
+  it("rejects production seed admins and the legacy payment webhook", () => {
+    const seedAdminEnv = productionEnv({
       SEED_ADMIN_PASSWORD: "prod-admin-password"
     });
-    delete missingWebhookEnv.PAYMENT_WEBHOOK_SECRET;
-    const missingWebhook = runImportWithEnv(missingWebhookEnv);
-    assert.notEqual(missingWebhook.status, 0);
-    assert.match(missingWebhook.stderr, /PAYMENT_WEBHOOK_SECRET/);
+    delete seedAdminEnv.PAYMENT_WEBHOOK_SECRET;
+    const seedAdmin = runImportWithEnv(seedAdminEnv);
+    assert.notEqual(seedAdmin.status, 0);
+    assert.match(seedAdmin.stderr, /SEED_ADMIN_(?:EMAIL|PASSWORD)/);
 
-    const missingSeedEnv = productionEnv({
+    const legacyWebhookEnv = productionEnv({
       PAYMENT_WEBHOOK_SECRET: "prod-webhook-secret"
     });
-    delete missingSeedEnv.SEED_ADMIN_PASSWORD;
-    const missingSeed = runImportWithEnv(missingSeedEnv);
-    assert.notEqual(missingSeed.status, 0);
-    assert.match(missingSeed.stderr, /SEED_ADMIN_PASSWORD/);
+    delete legacyWebhookEnv.SEED_ADMIN_EMAIL;
+    delete legacyWebhookEnv.SEED_ADMIN_PASSWORD;
+    const legacyWebhook = runImportWithEnv(legacyWebhookEnv);
+    assert.notEqual(legacyWebhook.status, 0);
+    assert.match(legacyWebhook.stderr, /PAYMENT_WEBHOOK_SECRET/);
   });
 
   it("keeps the default seed admin available outside production", () => {
@@ -613,6 +737,35 @@ describe("server API business rules", { concurrency: false }, () => {
       encoding: "utf8"
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
+  });
+
+  it("requires and records policy consent and protects member writes by Origin", async () => {
+    await api("/api/auth/register", {
+      method: "POST",
+      expectedStatus: 400,
+      body: {
+        email: "missing-consent@example.com",
+        password: "secret123",
+        acceptTerms: true,
+        acceptPrivacy: false
+      }
+    });
+
+    const { cookie, member } = await registerMember();
+    const db = await readDb();
+    const user = db.users.find((item) => item.id === member.user.id);
+    assert.equal(user.termsVersion, "2026-07-10");
+    assert.equal(user.privacyVersion, "2026-07-10");
+    assert.ok(user.termsAcceptedAt);
+    assert.ok(user.privacyAcceptedAt);
+
+    await api("/api/member/profile", {
+      method: "PATCH",
+      cookie,
+      skipOrigin: true,
+      expectedStatus: 403,
+      body: { name: "Blocked member write" }
+    });
   });
 
   it("protects member routes and creates a base member profile on registration", async () => {
@@ -659,7 +812,9 @@ describe("server API business rules", { concurrency: false }, () => {
       cookie,
       expectedStatus: 201,
       body: {
-        items: [{ productId: "vespree", quantity: 2 }]
+        items: [{ productId: "vespree", quantity: 2 }],
+        acceptTerms: true,
+        acceptPrivacy: true
       }
     });
     const order = created.payload.order;
@@ -778,14 +933,17 @@ describe("server API business rules", { concurrency: false }, () => {
     const repeatedRedeem = await api("/api/points-mall/redeem", {
       method: "POST",
       cookie,
-      expectedStatus: 200,
+      expectedStatus: 201,
       body: {
         mallItemId: "pm-random-sample-1",
         quantity: 2,
-        requestId: "redeem-once"
+        requestId: "redeem-once",
+        recipientName: "测试会员",
+        recipientPhone: "13900000000",
+        shippingAddress: "测试地址"
       }
     });
-    assert.equal(repeatedRedeem.payload.alreadyProcessed, true);
+    assert.deepEqual(repeatedRedeem.payload, redeemed.payload);
     assert.equal(repeatedRedeem.payload.member.profile.availablePoints, 400);
     assert.equal((await adminMallItem()).stockQuantity, 48);
 

@@ -114,7 +114,7 @@ if (hasCatalogData) {
   }
 
   function productUrl(id) {
-    return `product.html?id=${encodeURIComponent(id)}`;
+    return `/products/${encodeURIComponent(id)}`;
   }
 
   function brandUrl(id) {
@@ -129,7 +129,7 @@ if (hasCatalogData) {
     const compact = options.compact ? " product-card-compact" : "";
     const favorite = state.favorites.has(product.id);
     const scenes = sceneLabels(product.scenes).slice(0, 2).join(" / ");
-    const href = productUrl(product.id);
+    const href = productUrl(product.slug || product.id);
 
     if (options.compact) {
       return `

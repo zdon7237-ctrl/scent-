@@ -1,252 +1,192 @@
-# 馥屿正式发布运行手册
+# 馥屿商业版发布 Runbook
 
-更新日期：2026-05-12
+更新日期：2026-07-10
 
-## 发布边界
+## 1. 部署模型
 
-本手册只适用于当前公开展示版：
+| 用途 | 平台 | 输出 | 数据环境 |
+|---|---|---|---|
+| Production | Vercel | `dist/` + `/api/*` Function | Neon Production、生产 Blob、生产 Upstash、Resend Production |
+| Pull Request Preview | Vercel | `dist/` + `/api/*` Function | 独立 Neon 分支、预览 Blob/前缀、预览 Upstash、Resend 测试环境 |
+| 应急只读降级 | Netlify | `dist-public/` | 无动态 API、无会员和交易数据 |
 
-- 品牌展示。
-- 香水浏览。
-- 试香咨询。
-- 人工购买确认。
+Vercel build 不执行 migration 或 seed。数据库变化必须在部署候选之前通过 `scripts/release-migrate.mjs` 显式执行。`dist-public` 不是正常商业生产包。
 
-不要把 Node API、后台、会员积分、订单和真实支付作为本次公开部署内容。正式发布目录固定为：
-
-```text
-网页制作/dist-public
-```
-
-## 发布前准备
-
-先在 `launch-env-intake.md` 填完并确认正式运营信息。
-
-在部署平台配置以下环境变量：
-
-```text
-SITE_URL=https://你的正式域名
-CONTACT_EMAIL=你的客服邮箱
-CONTACT_WECHAT=你的客服微信
-```
-
-可选：
-
-```text
-BUSINESS_NAME=馥屿 Scent Atoll
-STUDIO_BOOKING=通过客服微信预约
-CUSTOMER_HOURS=12:00 - 20:00
-OG_IMAGE=https://你的正式域名/og-image.jpg
-```
-
-`OG_IMAGE` 不填时会使用站内 `/og-image.png`。如果填写，必须是 `https://` 的 PNG、JPG 或 WebP 图片 URL。
-`BUSINESS_NAME` 不填时会使用已确认的店名 `馥屿 Scent Atoll`；如有正式经营主体名称，可在部署平台填写它覆盖默认值。
-`STUDIO_BOOKING` 不填时会使用 `通过客服微信预约`；如有正式预约表单、小红书私信或其他方式，可填写它覆盖默认值。
-`SITE_URL` 必须是正式域名根地址，例如 `https://www.example.com`，不要填成 `https://www.example.com/shop.html`。
-
-## 本地最终检查
-
-在仓库根目录进入项目子目录：
-
-```bash
-cd 网页制作
-nvm use
-npm ci
-```
-
-先跑常规门禁：
-
-```bash
-npm run launch:preflight
-```
-
-这个命令会依次运行 `npm test`、`npm run build` 和 `npm run launch:check`。
-
-再用真实运营信息跑严格门禁：
-
-```bash
-npm run launch:status
-npm run check:env
-npm run launch:strict
-```
-
-`launch:status` 是只读状态检查，不构建、不部署、不联网；它用于在发布前快速确认还缺哪些上线条件。
-
-如果本次上线改动已经提交并推送到 GitHub，也可以用本地最终组合门禁：
-
-```bash
-npm run launch:ready
-```
-
-这个命令会依次确认 Git 发布状态、整个仓库的补丁空白检查、测试 / 普通构建 / 公开包检查和严格上线构建。它只适合本地发布前运行；部署平台 build command 仍然使用 `npm run launch:strict`。
-
-如果代码已经推到 GitHub，也可以在 Actions 页面手动运行 `Scent Atoll CI`。这个 workflow 支持 `workflow_dispatch`，会跑语法检查、测试、开发构建、公开发布包检查和严格上线门禁。
-
-严格门禁通过后，才允许发布 `dist-public/`。
-
-## GitHub 发布确认
-
-如果部署平台连接 GitHub 仓库，先确认目标分支已经包含本次上线准备的所有文件，再触发平台部署。尤其要确认根目录 / 子目录的 Netlify、Vercel、Node 版本、CI、上线脚本、测试、SEO / 合规页面和计划文档都已提交。
-
-```bash
-npm run check:git-release
-git diff --check -- :/
-```
-
-处理原则：
-
-- `dist/` 和 `dist-public/` 不提交，平台会通过 `npm run launch:strict` 重新生成。
-- `.env.production` 和 `.env*.local` 不提交，真实值只放在部署平台环境变量里。
-- `src/assets/og-image.png` 不提交，它由 `scripts/generate-og-image.mjs` 在构建时生成。
-- `网页制作/` 根目录下的旧静态 HTML、`script.js`、`styles.css`、`data.js` 不作为正式部署来源；正式页面源文件以 `src/`、上线脚本、部署配置和计划文档为准。
-- 如果 `git status` 里还有 `.github/`、`netlify.toml`、`vercel.json`、`.nvmrc`、`scripts/`、`tests/`、`src/` 或 `网页制作/plan/` 的未跟踪 / 未提交改动，不要开始正式部署。
-- `check:git-release` 在本地分支领先 upstream 时会失败；没有 upstream 时会给 warning，需要你人工确认目标分支已经推到 GitHub。
-- `npm run launch:ready` 已经包含 `check:git-release`、`git diff --check -- :/`、`launch:preflight` 和 `launch:strict`，可作为发布前最后一次本地总闸门。
-
-建议 staging 范围从仓库根目录执行，先只纳入上线关键文件：
-
-```bash
-git add -- .github .gitignore .nvmrc README.md netlify.toml vercel.json
-git add -- 网页制作/.eleventy.js 网页制作/.gitignore 网页制作/.nvmrc 网页制作/README.md
-git add -- 网页制作/package.json 网页制作/package-lock.json 网页制作/.env.production.example 网页制作/netlify.toml 网页制作/vercel.json
-git add -- 网页制作/scripts 网页制作/server/src 网页制作/tests 网页制作/src 网页制作/plan
-git rm --cached -r --ignore-unmatch 网页制作/dist
-git status --short --untracked-files=all
-```
-
-`git rm --cached -r --ignore-unmatch 网页制作/dist` 只用于提交“停止追踪旧构建产物”的索引删除，不删除本地 `dist/` 文件；如果当前索引已经没有 `dist/`，它会安静通过。提交前再次确认 `git status` 里没有 `.env.production`、`dist-public/`、`src/assets/og-image.png` 或本地数据库文件。
-
-## 平台部署
-
-### Netlify
-
-如果 Netlify 从仓库根目录读取配置，直接使用根目录 `netlify.toml`：
-
-```text
-base = 网页制作
-build command = npm run launch:strict
-publish = dist-public
-NODE_VERSION = 22
-```
-
-如果 Netlify 项目根目录设为 `网页制作/`，使用子目录内 `netlify.toml`：
-
-```text
-build command = npm run launch:strict
-publish = dist-public
-NODE_VERSION = 22
-```
+## 2. 一次性平台配置
 
 ### Vercel
 
-如果 Vercel 从仓库根目录读取配置，使用根目录 `vercel.json`。它会自动进入 `网页制作/` 安装和构建，并发布：
+1. 将项目连接到仓库根目录；根目录 `vercel.json` 会安装并构建 `网页制作/`。
+2. Node.js 版本使用 22。
+3. 开启 Git Preview；每个 PR 必须得到独立 Preview URL。
+4. 在 Vercel 中按 **Production** 与 **Preview** 分别录入环境变量。不要把同一个 secret 同时勾选两个环境。
+5. Preview 的 `DATABASE_URL` 使用 Neon preview branch；Production 使用 Neon 主生产分支。
+
+两个环境都必须设置：
 
 ```text
-网页制作/dist-public
+DEPLOYMENT_ENV
+DATA_RESIDENCY_DECISION   # Production 必填
+SITE_URL
+APP_ORIGIN
+CONTACT_EMAIL
+CONTACT_WECHAT
+BUSINESS_NAME             # Production 必填
+DATABASE_URL
+RESEND_API_KEY
+EMAIL_FROM
+BLOB_READ_WRITE_TOKEN
+UPSTASH_REDIS_REST_URL
+UPSTASH_REDIS_REST_TOKEN
 ```
 
-如果 Vercel 项目根目录设为 `网页制作/`，使用子目录内 `vercel.json`，输出目录为：
+Production 的 `DEPLOYMENT_ENV=production`，`APP_ORIGIN=SITE_URL`。Preview 的 `DEPLOYMENT_ENV=preview`，`SITE_URL` 与 `APP_ORIGIN` 使用预览域名。Preview 的数据库、Blob、Redis 与邮件密钥必须与 Production 不同。
 
-```text
-dist-public
-```
-
-Vercel 项目设置里确认 Node.js Version 使用 22，或确认它读取 `网页制作/package.json` 的 `engines.node >=22`。
-
-### Cloudflare Pages
-
-把项目根目录设为 `网页制作/`，配置：
-
-```text
-Build command: npm run launch:strict
-Output directory: dist-public
-Node.js version: 22
-```
-
-`_headers` 和 `_redirects` 会随发布包生成。
-
-## 域名和 DNS
-
-正式发布前先选定唯一主域名，并让 `SITE_URL` 与它完全一致。例如选择：
-
-```text
-https://www.example.com
-```
-
-则不要把 `SITE_URL` 填成裸域、平台预览域或任何带路径的地址。
-
-DNS 和平台域名设置建议：
-
-- `www` 子域通常用 `CNAME` 指向部署平台提供的目标。
-- 裸域通常按平台要求使用 `A`、`ALIAS`、`ANAME` 或 CNAME flattening。
-- 只保留一个 canonical 主域名，另一个域名做 301 / 308 跳转到主域名。
-- HTTPS 证书签发完成后再对外发布。
-- 不要把 Netlify / Vercel / Cloudflare Pages 的预览域名提交给搜索引擎或写入外部渠道。
-
-域名配置完成后，用最终主域名运行部署后 smoke check。
-
-## 部署后 smoke check
-
-部署完成并绑定正式域名后，在本地运行：
+发布工作流会在 migration 前比较两套环境文件。也可本地运行：
 
 ```bash
-SITE_URL=https://你的正式域名 CONTACT_EMAIL=你的客服邮箱 CONTACT_WECHAT=你的客服微信 npm run check:live
+npm run check:isolation -- /tmp/scent-atoll-production.env /tmp/scent-atoll-preview.env
 ```
 
-如果有正式主体、预约方式或客服时间，建议也一起传入，确认线上页面展示的是本次正式值：
+检查只报告冲突的变量名，不输出 secret 值。
+
+Production 的 `BUSINESS_NAME` 必须填写真实经营主体。`DATA_RESIDENCY_DECISION` 只能是 `cross_border_approved` 或 `domestic_infrastructure`；评估未完成时发布门禁必须失败，交易功能不得上线。
+
+可选项：`STUDIO_BOOKING`、`CUSTOMER_HOURS`、`OG_IMAGE`、`EMAIL_REPLY_TO`。`ERROR_WEBHOOK_URL` 与 `ERROR_WEBHOOK_TOKEN` 必须同时设置或同时省略。
+
+Production 不得设置 `SEED_ADMIN_EMAIL` 或 `SEED_ADMIN_PASSWORD`。Production 与 Preview 都不得设置 `PAYMENT_WEBHOOK_SECRET`；初始 owner 只能通过一次性 bootstrap 流程创建，开发支付 webhook 在 Vercel 部署中关闭。
+
+Production 与 Preview 都要设置各自独立、至少 32 位的 `CRON_SECRET`。Vercel 每 10 分钟以 Bearer token 调用 `/api/internal/release-expired-reservations`，释放超时未付款订单的库存；该入口未通过密钥鉴权时只返回 401。
+
+第一阶段设置 `WECHAT_PAY_ENABLED=false`。第二阶段只有在商户号、AppID、商户证书序列号/私钥、API v3 密钥、通知 URL、平台证书序列号/公钥全部配置后才改为 `true`；`check:env` 会在启用时强制检查完整凭据。
+
+### GitHub Production Environment
+
+创建名为 `production` 的 Environment，开启 required reviewer，并配置：
+
+Secrets：
+
+```text
+VERCEL_TOKEN
+VERCEL_ORG_ID
+VERCEL_PROJECT_ID
+VERCEL_AUTOMATION_BYPASS_SECRET   # Vercel Deployment Protection 开启时必填
+```
+
+Variable：
+
+```text
+PRODUCTION_URL=https://正式主域名
+```
+
+Production Environment 只允许 `main` 分支。关闭管理员绕过审批，保留部署记录。
+
+## 3. 全新数据库首次初始化
+
+本节只在全新的 Production 数据库执行一次。日常发布直接进入下一节，绝不重复 bootstrap 或 seed。
+
+先拉取 Production 环境并执行 migration：
 
 ```bash
-SITE_URL=https://你的正式域名 CONTACT_EMAIL=你的客服邮箱 CONTACT_WECHAT=你的客服微信 BUSINESS_NAME=你的经营主体名称 STUDIO_BOOKING=你的预约方式 CUSTOMER_HOURS="12:00 - 20:00" npm run check:live
+vercel pull --yes --environment=production
+vercel env pull /tmp/scent-atoll-production.env --yes --environment=production
+
+cd 网页制作
+VERCEL_ENV=production ALLOW_RELEASE_MIGRATION=production \
+  node --env-file=/tmp/scent-atoll-production.env scripts/release-migrate.mjs
 ```
 
-它会检查：
+再初始化会员等级、首批商品和积分商品。脚本在任一业务基础表已有数据时拒绝覆盖：
 
-- 公开页面返回 200。
-- 私有开发路径返回 404。
-- 随机未知路径返回 404。
-- `robots.txt` 指向正式域名 sitemap。
-- `sitemap.xml` 包含公开主路径和静态详情页。
-- canonical 与 `og:url` 指向当前线上 URL。
-- `og:image` / `twitter:image` 可访问且返回图片类型。
-- 安全响应头存在。
-- `cart.html`、`404.html` 有 `X-Robots-Tag: noindex, nofollow`。
-- 旧兼容详情入口 `product.html`、`brand.html`、`article.html` 保持 `noindex`。
-- 页面内没有示例域名、示例邮箱或“上线前填写”占位。
-- 如果提供了客服邮箱、客服微信、经营主体、预约方式和客服时间，会确认它们已经出现在上线后的公开页面中。
-- 如果提供了 `OG_IMAGE`，会确认线上分享元数据实际使用这个图片 URL，并确认 `og:image` 与 `twitter:image` 一致。
+```bash
+BOOTSTRAP_COMMERCE_CONFIRM=initialize-commerce-data \
+  node --env-file=/tmp/scent-atoll-production.env scripts/bootstrap-commerce.mjs
+```
 
-## 人工抽查
+最后创建首个 owner。邮箱、姓名和至少 14 位的高强度密码必须通过受保护的临时环境或 CI secret 注入，不得提交或保存在 Vercel 常驻环境：
 
-自动检查通过后，再手动打开：
+```bash
+BOOTSTRAP_CONFIRM=create-first-owner \
+BOOTSTRAP_OWNER_EMAIL=正式负责人邮箱 \
+BOOTSTRAP_OWNER_PASSWORD=一次性高强度密码 \
+BOOTSTRAP_OWNER_NAME=负责人姓名 \
+  node --env-file=/tmp/scent-atoll-production.env scripts/bootstrap-owner.mjs
+```
 
-- 首页 `/`
-- 香水列表 `/shop.html`
-- 一个商品静态详情页，例如 `/product-vespree.html`
-- 品牌页 `/brands.html`
-- 一个品牌静态详情页，例如 `/brand-satori.html`
-- Journal `/journal.html`
-- 一篇文章静态详情页，例如 `/article-first-niche.html`
-- 试香 `/samples.html`
-- 客服与配送 `/service.html`
-- 隐私政策 `/privacy.html`
-- 用户协议 `/terms.html`
-- 404 `/404.html`
+完成后立即删除所有 `BOOTSTRAP_*` 变量，登录后台更换密码并确认 `/api/health/ready` 返回 `ready`。初始化中途失败时保留数据库现场并核对三个基础表与 owner 状态；禁止运行开发 `db:seed` 补救。
 
-手机 375px 宽度也要抽查首页、香水列表、商品详情和购物意向清单。
+## 4. PR Preview 流程
 
-## 回滚
+涉及 schema 的 PR 必须先迁移它自己的 Neon preview branch，再重新部署 Preview：
 
-如果部署后 `check:live` 失败：
+```bash
+vercel pull --yes --environment=preview --git-branch=<PR分支>
+vercel env pull /tmp/scent-atoll-preview.env --yes --environment=preview --git-branch=<PR分支>
 
-1. 暂停把新地址提交给搜索引擎或外部渠道。
-2. 在部署平台回滚到上一个通过 smoke check 的部署版本。
-3. 保留失败部署的构建日志和 `check:live` 输出。
-4. 修复后重新跑 `npm run launch:strict`。
-5. 再次部署并跑 `SITE_URL=https://你的正式域名 CONTACT_EMAIL=你的客服邮箱 CONTACT_WECHAT=你的客服微信 npm run check:live`。
+cd 网页制作
+VERCEL_ENV=preview \
+  node --env-file=/tmp/scent-atoll-preview.env scripts/check-launch-env.mjs
 
-如果只是环境变量填错：
+VERCEL_ENV=preview ALLOW_RELEASE_MIGRATION=preview \
+  node --env-file=/tmp/scent-atoll-preview.env scripts/release-migrate.mjs
+```
 
-1. 在部署平台修正变量。
-2. 重新触发构建。
-3. 跑 `check:live`。
+然后重新触发该 commit 的 Vercel Preview，并检查：
 
-不要通过手动上传普通 `dist/` 来临时修复，因为 `dist/` 包含开发页。
+```bash
+DEPLOYMENT_URL=https://该PR的预览地址 \
+VERCEL_AUTOMATION_BYPASS_SECRET=预览保护密钥 \
+node scripts/check-commercial-deployment.mjs
+```
+
+合并前必须确认：CI 全绿；Preview 检查通过；注册、登录、下单、人工收款、发货、确认收货、退款和积分流程按本次变更范围完成；Preview 没有读取或修改 Production 数据。
+
+## 5. Production 发布
+
+1. 确认 PR 已合并至 `main`，CI 和 Vercel Preview 均通过。
+2. 确认 Neon 自动备份/时间点恢复可用，并记录当前生产 deployment ID 与 migration ID。
+3. 在 GitHub Actions 手动运行 **Scent Atoll Production Release**，输入 `RELEASE`。
+4. Production reviewer 核对 commit、数据库备份与变更单后批准。
+5. 工作流会按不可跳过的顺序执行：
+
+```text
+env contract
+-> production migration
+-> vercel build --prod
+-> production-target candidate (--skip-domain)
+-> candidate pages/API/auth verification
+-> vercel promote
+-> production alias verification
+```
+
+候选验证失败时工作流不会 promote。禁止另行运行 `vercel --prod` 绕过门禁，也禁止在 Vercel build command 中临时加入 migration 或 seed。
+
+发布成功后人工完成一次最小交易演练，并检查错误告警、订单审计、邮件、库存和积分记录。24 小时内重点观察 5xx、登录失败率、邮件失败、重复幂等冲突和数据库连接耗尽。
+
+## 6. 失败、回滚与降级
+
+- **migration 失败**：停止发布，不部署候选；修复为新的前向 migration 后重跑，禁止在现场编辑生产表。
+- **候选验证失败**：不 promote；保留当前 Production，查看 Vercel Function 日志和服务告警。
+- **promote 后应用故障**：使用 `vercel rollback` 或 promote 上一个已知正常 deployment。数据库 migration 必须保持向后兼容，应用回滚不自动回滚 schema。
+- **数据损坏**：立刻冻结订单与后台写操作；按 Neon 时间点恢复流程恢复到新分支，核对订单、库存、积分后再切换连接。每季度至少做一次恢复演练并记录耗时。
+- **动态服务长时间不可用**：明确暂停登录、订单、积分和后台后，运行 `npm run launch:strict` 生成 `dist-public/`，由 Netlify 发布只读展示页。恢复 Vercel 前不得把降级期咨询误标成线上订单。
+
+任何回滚后都要再次运行：
+
+```bash
+DEPLOYMENT_URL=https://正式主域名 node scripts/check-commercial-deployment.mjs
+```
+
+若当前处于 Netlify 静态降级，则改用 `npm run check:live` 验证公开展示边界。
+
+## 7. 发布完成标准
+
+- GitHub Release workflow 完整成功，没有跳过 migration、candidate verification 或 production verification。
+- Production 使用 `dist/` 与 `/api/*`，不是 `dist-public/`。
+- Production 与 Preview 的数据库和托管服务凭据相互隔离。
+- 没有默认管理员、开发 seed 或占位联系方式。
+- 全新数据库已按 migration -> commerce bootstrap -> owner bootstrap 完成一次性初始化，常驻环境不存在 `BOOTSTRAP_*`。
+- Vercel 定时任务已用独立 `CRON_SECRET` 成功释放一次测试超时订单，重复调用没有重复释放库存。
+- `/sitemap.xml` 来自数据库商品源并包含当前活动商品 slug，不再依赖静态种子商品列表。
+- 生产域名、HTTPS、安全响应头、商品 API、匿名会话和后台匿名拒绝均通过检查。
+- 备份可用、告警可触发、回滚目标已记录，并完成订单到退款的演练。
