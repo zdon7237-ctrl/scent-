@@ -21,7 +21,7 @@
 
 ### 验证记录
 
-- 定向积分过期回归测试通过；完整测试初跑共 147 项，唯一失败是新用例重复走后台登录，耗尽测试进程共享的内存 IP 限额；测试已改为直接注入隔离管理 Session，待推送后由 CI 重跑完整集。
+- `node --test tests/*.test.mjs`：147 项，146 passed，0 failed，1 skipped。跳过项是本地未注入安全 PostgreSQL 测试库时的 migration smoke。
 - `npm run build`、`npm run launch:check`、发布配置专项测试和 `git diff --check -- :/` 通过。
 - 本记录不把本地测试通过等同于平台配置或 Production 验收通过。
 
