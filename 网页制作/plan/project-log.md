@@ -148,7 +148,14 @@
 - `/api/products` 可读取数据库商品；匿名 `/api/auth/me` 返回空用户，匿名管理端接口拒绝访问。
 - 已在 Preview 分支临时创建并清理 `scent_preview_test` 数据库，真实 PostgreSQL migration/seed 幂等 smoke test 与全量 `npm test` 均通过，不再跳过数据库 smoke。
 - `npm run launch:check`、部署配置检查和 `git diff --check` 通过；静态应急包仍提示历史占位域名与客服资料，不能作为正式交易站发布。
-- Preview 不包含 owner；后续浏览器业务验收如需后台操作，应使用一次性 Preview owner 初始化，不得把开发默认管理员写入常驻环境变量。
+- Preview Owner 使用一次性受控初始化创建，不把开发默认管理员写入常驻环境变量。
+
+### Preview Owner 验证
+
+- 已在独立 Preview 数据库创建两个授权 Owner：`Coy` 与 `Xxx`；两者均为 `active / owner`，没有写入 Production。
+- 第一个账号通过一次性 bootstrap 创建；第二个账号使用受控事务创建，并分别写入 `bootstrap_owner` 与 `bootstrap_preview_owner` 审计记录。
+- 已在 Vercel Preview 的统一登录入口分别验证两个账号，均能自动进入管理端概览并获得 Owner 权限。
+- 登录验证未执行核款、发货、退款、库存调整或积分操作；临时密码未写入 Git、项目日志、Vercel 常驻变量或浏览器密码管理器。
 
 ### 尚未完成
 
