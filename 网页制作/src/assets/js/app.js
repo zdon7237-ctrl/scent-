@@ -926,15 +926,24 @@ if (hasCatalogData) {
     if (!mount) return;
     const session = await currentSession();
     if (!session.user) {
+      try {
+        const adminSession = await getCurrentAdmin();
+        if (adminSession.admin) {
+          mount.innerHTML = `<a class="account-link" href="admin.html">管理后台</a>`;
+          return;
+        }
+      } catch {
+        // Anonymous visitors should see the normal customer sign-in actions.
+      }
       mount.innerHTML = `
-        <a class="text-link" href="login.html">登录</a>
+        <a class="account-link" href="login.html">登录</a>
         <a class="text-link" href="register.html">注册</a>
       `;
       return;
     }
 
     mount.innerHTML = `
-      <a class="text-link" href="account.html">${escapeHtml(session.tier.name)}</a>
+      <a class="account-link" href="account.html">我的账户</a>
       <a class="text-link" href="points.html">${escapeHtml(session.profile.availablePoints)} 积分</a>
       <button class="text-button" type="button" data-logout>退出</button>
     `;

@@ -2121,14 +2121,22 @@
       if (!mount) return;
       const session = await currentSession();
       if (!session.user) {
+        try {
+          const adminSession = await getCurrentAdmin();
+          if (adminSession.admin) {
+            mount.innerHTML = `<a class="account-link" href="admin.html">\u7BA1\u7406\u540E\u53F0</a>`;
+            return;
+          }
+        } catch (e) {
+        }
         mount.innerHTML = `
-        <a class="text-link" href="login.html">\u767B\u5F55</a>
+        <a class="account-link" href="login.html">\u767B\u5F55</a>
         <a class="text-link" href="register.html">\u6CE8\u518C</a>
       `;
         return;
       }
       mount.innerHTML = `
-      <a class="text-link" href="account.html">${escapeHtml2(session.tier.name)}</a>
+      <a class="account-link" href="account.html">\u6211\u7684\u8D26\u6237</a>
       <a class="text-link" href="points.html">${escapeHtml2(session.profile.availablePoints)} \u79EF\u5206</a>
       <button class="text-button" type="button" data-logout>\u9000\u51FA</button>
     `;

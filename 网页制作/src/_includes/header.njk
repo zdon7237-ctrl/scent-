@@ -28,5 +28,11 @@
         <input type="search" data-site-search-input placeholder="品牌、香调、场景">
       </label>
     </form>
+{% if not site.isPublicBuild %}
+    <div class="auth-actions" data-auth-actions aria-live="polite">
+      <a class="account-link" href="login.html">登录</a>
+      <a class="text-link" href="register.html">注册</a>
+    </div>
+{% endif %}
   </div>
 </header>

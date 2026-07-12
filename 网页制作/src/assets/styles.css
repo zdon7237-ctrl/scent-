@@ -198,6 +198,25 @@ button {
   white-space: nowrap;
 }
 
+.account-link {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 13px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.account-link:hover,
+.account-link:focus-visible {
+  border-color: var(--moss);
+  background: var(--moss);
+  color: var(--white);
+}
+
 .text-button {
   border: 0;
   background: transparent;
