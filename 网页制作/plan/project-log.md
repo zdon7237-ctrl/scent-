@@ -2,6 +2,29 @@
 
 本文件按日期倒序记录项目阶段、验证结果和下一步。它用于日常跟进，不替代发布清单或发布 Runbook。
 
+## 2026-07-12：商业发布平台接入
+
+### 已完成
+
+- GitHub 已创建 PR #1，发布分支为 `codex/commercial-launch-2026-07-10`。
+- 修复 Vercel `includeFiles` 新 Schema 要求，并让部署自检识别字符串 glob。
+- Vercel Hobby 不支持每 10 分钟 Cron，改为 GitHub Actions 定时调用库存预留释放接口；`CRON_SECRET` 已同步到 Vercel 与 GitHub。
+- 正式域名确认是 `https://scentatoll.com`。
+- 已从 Vercel Production/Preview 删除 `SEED_ADMIN_EMAIL`、`SEED_ADMIN_PASSWORD`、`PAYMENT_WEBHOOK_SECRET`。
+- 创建公开商品图片存储 `scent-blob`，作用域为 Production 与 Preview。
+- 创建免费 Upstash 数据库 `scent-redis`，区域 `iad1`，每月 500,000 次命令，已连接 Production 与 Preview。
+- 创建免费 Resend 资源 `scent-email`，域名 `scentatoll.com`，每月 3,000 封、每日 100 封；仍待连接项目和确认域名验证。
+- 代码已兼容 Vercel Blob OIDC 与 Upstash Marketplace 自动变量名；115 项测试 114 passed、1 skipped，构建通过。
+- 新增 `使用与维护说明.md`，记录前后端、外部平台、本地开发、修改和发布方法。
+
+### 当前阻塞与风险
+
+- 本地提交 `c6467a2` 因 GitHub 网络间歇超时尚未确认推送；本地提交安全保留。
+- Resend 尚未完成项目连接、API Key 注入、DNS 验证与 `EMAIL_FROM` 配置。
+- Production 与 Preview 当前仍共享部分 Neon、Blob、Upstash 资源，不满足最终隔离门禁。
+- 真实 Neon Preview migration/seed smoke、并发测试、备份恢复和完整浏览器业务验收尚未执行。
+- Vercel 账户仍显示账单地址不完整警告。
+
 ## 2026-07-10：正式上线启动检查
 
 ### 已完成
