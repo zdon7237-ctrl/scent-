@@ -4,10 +4,10 @@
   "installCommand": "npm ci --include=dev",
   "functions": {
     "api/[...path].mjs": {
-      "includeFiles": ["src/assets/data.js"]
+      "includeFiles": "src/assets/data.js"
     },
     "api/product-page.mjs": {
-      "includeFiles": ["dist/product.html", "src/assets/data.js"]
+      "includeFiles": "{dist/product.html,src/assets/data.js}"
     }
   },
   "redirects": [

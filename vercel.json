@@ -4,10 +4,10 @@
   "outputDirectory": "网页制作/dist",
   "functions": {
     "api/[...path].mjs": {
-      "includeFiles": ["网页制作/src/assets/data.js"]
+      "includeFiles": "网页制作/src/assets/data.js"
     },
     "api/product-page.mjs": {
-      "includeFiles": ["网页制作/dist/product.html", "网页制作/src/assets/data.js"]
+      "includeFiles": "网页制作/{dist/product.html,src/assets/data.js}"
     }
   },
   "redirects": [

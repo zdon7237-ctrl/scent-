@@ -177,7 +177,13 @@ function checkVercel(label, config, options = {}) {
     const includeFiles = config.functions?.[functionPath]?.includeFiles;
     const included = Array.isArray(includeFiles) ? includeFiles : [includeFiles].filter(Boolean);
     for (const expectedFile of expectedFiles) {
-      if (!included.includes(expectedFile)) {
+      const isIncluded = included.some((pattern) => {
+        if (pattern === expectedFile) return true;
+        const brace = String(pattern).match(/^(.*)\{([^{}]+)\}(.*)$/);
+        if (!brace) return false;
+        return brace[2].split(",").some((part) => `${brace[1]}${part}${brace[3]}` === expectedFile);
+      });
+      if (!isIncluded) {
         failures.push(`${label} functions.${functionPath}.includeFiles should include ${expectedFile}`);
       }
     }
