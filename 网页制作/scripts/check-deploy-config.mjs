@@ -159,12 +159,6 @@ function checkVercel(label, config, options = {}) {
   if (!hasSitemapRewrite) {
     failures.push(`${label} should rewrite /sitemap.xml to /api/sitemap so the production sitemap follows database products`);
   }
-  const hasReservationCron = (config.crons || []).some((cron) => {
-    return cron.path === "/api/internal/release-expired-reservations" && cron.schedule === "*/10 * * * *";
-  });
-  if (!hasReservationCron) {
-    failures.push(`${label} should release expired stock reservations every 10 minutes`);
-  }
   const hasLegacyProductRedirect = (config.redirects || []).some((redirect) => {
     return redirect.source === "/product-:slug.html"
       && redirect.destination === "/products/:slug"
@@ -274,6 +268,22 @@ function checkReleaseWorkflow(text) {
   }
 }
 
+function checkReservationWorkflow(text) {
+  const requiredFragments = [
+    "schedule:",
+    'cron: "*/10 * * * *"',
+    "PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}",
+    "CRON_SECRET: ${{ secrets.CRON_SECRET }}",
+    "/api/internal/release-expired-reservations",
+    "Authorization: Bearer $CRON_SECRET"
+  ];
+  for (const fragment of requiredFragments) {
+    if (!text.includes(fragment)) {
+      failures.push(`.github/workflows/release-expired-reservations.yml should include ${fragment}`);
+    }
+  }
+}
+
 const projectNvmrc = (await readRequired(path.join(projectRoot, ".nvmrc"))).trim();
 if (projectNvmrc !== "22") {
   failures.push("网页制作/.nvmrc should pin Node 22");
@@ -328,6 +338,9 @@ checkCiWorkflow(ciWorkflow);
 
 const releaseWorkflow = await readRequired(path.join(repoRoot, ".github/workflows/scent-atoll-release.yml"));
 checkReleaseWorkflow(releaseWorkflow);
+
+const reservationWorkflow = await readRequired(path.join(repoRoot, ".github/workflows/release-expired-reservations.yml"));
+checkReservationWorkflow(reservationWorkflow);
 
 await readRequired(path.join(projectRoot, "scripts/release-migrate.mjs"));
 await readRequired(path.join(projectRoot, "scripts/check-commercial-deployment.mjs"));

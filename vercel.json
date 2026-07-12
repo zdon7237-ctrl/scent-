@@ -13,9 +13,6 @@
   "redirects": [
     { "source": "/product-:slug.html", "destination": "/products/:slug", "permanent": true }
   ],
-  "crons": [
-    { "path": "/api/internal/release-expired-reservations", "schedule": "*/10 * * * *" }
-  ],
   "rewrites": [
     { "source": "/products/:slug", "destination": "/api/product-page?slug=:slug" },
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },

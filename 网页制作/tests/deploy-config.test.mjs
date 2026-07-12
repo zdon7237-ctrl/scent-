@@ -15,6 +15,7 @@ const filesToCopy = [
   "vercel.json",
   ".github/workflows/scent-atoll-ci.yml",
   ".github/workflows/scent-atoll-release.yml",
+  ".github/workflows/release-expired-reservations.yml",
   "网页制作/.nvmrc",
   "网页制作/package.json",
   "网页制作/netlify.toml",
@@ -131,21 +132,19 @@ describe("deployment config check", () => {
     assert.match(result.stderr, /should rewrite \/products\/:slug to \/api\/product-page\?slug=:slug/);
   }));
 
-  it("rejects Vercel configs without the database sitemap or reservation cleanup cron", () => withFixture((fixture) => {
+  it("rejects Vercel configs without the database sitemap", () => withFixture((fixture) => {
     for (const filePath of [
       path.join(fixture.repoRoot, "vercel.json"),
       path.join(fixture.projectRoot, "vercel.json")
     ]) {
       mutateJson(filePath, (vercel) => {
         vercel.rewrites = vercel.rewrites.filter((rewrite) => rewrite.source !== "/sitemap.xml");
-        vercel.crons = [];
       });
     }
 
     const result = runCheck(fixture);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /should rewrite \/sitemap\.xml to \/api\/sitemap/);
-    assert.match(result.stderr, /should release expired stock reservations every 10 minutes/);
   }));
 
   it("rejects missing SSR files and the legacy product redirect", () => withFixture((fixture) => {

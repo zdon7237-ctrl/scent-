@@ -1,0 +1,32 @@
+name: Release expired stock reservations
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-expired-stock-reservations
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Validate scheduler configuration
+        run: |
+          test -n "$PRODUCTION_URL"
+          test -n "$CRON_SECRET"
+      - name: Release expired reservations
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "$PRODUCTION_URL/api/internal/release-expired-reservations"

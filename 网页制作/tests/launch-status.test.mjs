@@ -16,6 +16,7 @@ const configFilesToCopy = [
   "vercel.json",
   ".github/workflows/scent-atoll-ci.yml",
   ".github/workflows/scent-atoll-release.yml",
+  ".github/workflows/release-expired-reservations.yml",
   "网页制作/.nvmrc",
   "网页制作/package.json",
   "网页制作/netlify.toml",
