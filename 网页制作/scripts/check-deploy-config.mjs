@@ -113,6 +113,7 @@ function checkVercel(label, config, options = {}) {
     expectedBuildFragments = ["npm run build"],
     expectedRewriteDestination,
     expectedProductRewriteDestination,
+    expectedIgnoreCommand,
     expectedFunctionIncludes = {}
   } = options;
   const buildCommand = String(config.buildCommand || "");
@@ -121,6 +122,9 @@ function checkVercel(label, config, options = {}) {
   }
   if (!String(config.installCommand || "").includes("npm ci")) {
     failures.push(`${label} installCommand should run npm ci`);
+  }
+  if (config.ignoreCommand !== expectedIgnoreCommand) {
+    failures.push(`${label} ignoreCommand should be ${expectedIgnoreCommand}`);
   }
   for (const fragment of expectedBuildFragments) {
     if (!buildCommand.includes(fragment)) {
@@ -233,21 +237,24 @@ function checkReleaseWorkflow(text) {
     "workflow_dispatch:",
     "environment: production",
     "concurrency:",
+    "RELEASE_CONFIRMATION: ${{ inputs.confirmation }}",
     "VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}",
     "VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}",
     "VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}",
+    "GITHUB_RELEASE_AUDIT_TOKEN: ${{ secrets.GITHUB_RELEASE_AUDIT_TOKEN }}",
+    "PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}",
     "PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}",
     "npm install --global vercel@55.0.0",
-    "Validate release controls",
-    "vercel pull --yes --environment=production",
-    "vercel env pull /tmp/scent-atoll-production.env",
-    "vercel env pull /tmp/scent-atoll-preview.env",
-    "scripts/check-launch-env.mjs",
-    "scripts/check-environment-isolation.mjs",
+    "Validate protected release credentials and target",
+    "scripts/check-release-controls.mjs",
+    "scripts/check-platform-release-settings.mjs",
+    "scripts/check-environment-isolation.mjs --prefixed-env",
+    "DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}",
     "ALLOW_RELEASE_MIGRATION: production",
     "scripts/release-migrate.mjs",
-    "vercel build --prod",
-    "vercel deploy --prebuilt --prod --skip-domain",
+    "without downloading Sensitive environment values",
+    "vercel deploy --yes --prod --skip-domain",
+    "--build-env SCENT_ATOLL_CONTROLLED_RELEASE=1",
     "scripts/check-commercial-deployment.mjs",
     "vercel promote",
     "DEPLOYMENT_URL: ${{ env.PRODUCTION_URL }}"
@@ -258,9 +265,14 @@ function checkReleaseWorkflow(text) {
   if (text.includes("db:seed")) {
     failures.push(".github/workflows/scent-atoll-release.yml must not seed a release database");
   }
+  for (const forbidden of ["vercel env pull", "vercel build --prod", "--prebuilt"]) {
+    if (text.includes(forbidden)) {
+      failures.push(`.github/workflows/scent-atoll-release.yml must not use ${forbidden}; Sensitive values stay in GitHub/Vercel and the candidate builds in Vercel`);
+    }
+  }
 
   const migrationIndex = text.indexOf("scripts/release-migrate.mjs");
-  const deploymentIndex = text.indexOf("vercel deploy --prebuilt --prod --skip-domain");
+  const deploymentIndex = text.indexOf("vercel deploy --yes --prod --skip-domain");
   const verificationIndex = text.indexOf("scripts/check-commercial-deployment.mjs", deploymentIndex);
   const promotionIndex = text.indexOf("vercel promote", deploymentIndex);
   if (!(migrationIndex !== -1 && migrationIndex < deploymentIndex && deploymentIndex < verificationIndex && verificationIndex < promotionIndex)) {
@@ -281,6 +293,9 @@ function checkReservationWorkflow(text) {
     if (!text.includes(fragment)) {
       failures.push(`.github/workflows/release-expired-reservations.yml should include ${fragment}`);
     }
+  }
+  if (text.includes("environment: production")) {
+    failures.push(".github/workflows/release-expired-reservations.yml must not use the reviewer-protected production Environment; scheduled reservation cleanup needs repository-scoped PRODUCTION_URL and CRON_SECRET");
   }
 }
 
@@ -345,6 +360,9 @@ checkReservationWorkflow(reservationWorkflow);
 await readRequired(path.join(projectRoot, "scripts/release-migrate.mjs"));
 await readRequired(path.join(projectRoot, "scripts/check-commercial-deployment.mjs"));
 await readRequired(path.join(projectRoot, "scripts/check-environment-isolation.mjs"));
+await readRequired(path.join(projectRoot, "scripts/check-release-controls.mjs"));
+await readRequired(path.join(projectRoot, "scripts/check-platform-release-settings.mjs"));
+await readRequired(path.join(projectRoot, "scripts/check-vercel-auto-deploy.mjs"));
 
 const projectNetlify = await readRequired(path.join(projectRoot, "netlify.toml"));
 checkNetlify("网页制作/netlify.toml", projectNetlify);
@@ -358,6 +376,7 @@ checkVercel("网页制作/vercel.json", projectVercel, {
   expectedBuildFragments: ["npm run check:env", "npm run check:deploy", "npm run build"],
   expectedRewriteDestination: "/api/[...path]",
   expectedProductRewriteDestination: "/api/product-page?slug=:slug",
+  expectedIgnoreCommand: "node scripts/check-vercel-auto-deploy.mjs",
   expectedFunctionIncludes: {
     "api/[...path].mjs": ["src/assets/data.js"],
     "api/product-page.mjs": ["dist/product.html", "src/assets/data.js"]
@@ -370,6 +389,7 @@ checkVercel("vercel.json", repoVercel, {
   expectedBuildFragments: ["cd 网页制作", "npm run check:env", "npm run check:deploy", "npm run build"],
   expectedRewriteDestination: "/api/[...path]",
   expectedProductRewriteDestination: "/api/product-page?slug=:slug",
+  expectedIgnoreCommand: "node 网页制作/scripts/check-vercel-auto-deploy.mjs",
   expectedFunctionIncludes: {
     "api/[...path].mjs": ["网页制作/src/assets/data.js"],
     "api/product-page.mjs": ["网页制作/dist/product.html", "网页制作/src/assets/data.js"]

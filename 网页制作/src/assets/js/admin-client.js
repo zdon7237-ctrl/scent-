@@ -17,6 +17,19 @@ export function getCurrentAdmin() {
   return apiFetch("/api/admin/auth/me");
 }
 
+export function adminChangePassword(payload) {
+  return apiFetch("/api/admin/auth/change-password", {
+    method: "POST",
+    body: payload
+  });
+}
+
+export function adminRevokeOtherSessions() {
+  return apiFetch("/api/admin/auth/sessions/revoke-others", {
+    method: "POST"
+  });
+}
+
 export function adminGetMembers() {
   return apiFetch("/api/admin/members");
 }

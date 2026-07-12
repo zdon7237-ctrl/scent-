@@ -22,15 +22,28 @@
         ...options.headers || {}
       }).filter(([, value]) => value !== void 0 && value !== null && value !== "")
     );
-    const response = await fetch(path, {
-      credentials: "same-origin",
-      headers,
-      ...options,
-      body: options.body && typeof options.body !== "string" ? JSON.stringify(options.body) : options.body
-    });
+    let response;
+    try {
+      response = await fetch(path, {
+        credentials: "same-origin",
+        ...options,
+        headers,
+        body: options.body && typeof options.body !== "string" ? JSON.stringify(options.body) : options.body
+      });
+    } catch (cause) {
+      throw new ApiError("\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5\u3002", {
+        cause,
+        code: "NETWORK_ERROR",
+        path
+      });
+    }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(payload.error || "\u8BF7\u6C42\u5931\u8D25\u3002");
+      throw new ApiError(payload.error || "\u8BF7\u6C42\u5931\u8D25\u3002", {
+        status: response.status,
+        code: payload.code || "API_ERROR",
+        path
+      });
     }
     return payload;
   }
@@ -40,8 +53,18 @@
       maximumFractionDigits: 2
     })}`;
   }
+  var ApiError;
   var init_api_client = __esm({
     "src/assets/js/api-client.js"() {
+      ApiError = class extends Error {
+        constructor(message, options = {}) {
+          super(message, { cause: options.cause });
+          this.name = "ApiError";
+          this.status = Number(options.status || 0);
+          this.code = options.code || "API_ERROR";
+          this.path = options.path || "";
+        }
+      };
     }
   });
 
@@ -163,9 +186,10 @@
       ...sampleSetItems()
     ];
   }
-  function replaceCatalogProducts(products = []) {
+  function replaceCatalogProducts(products = [], options = {}) {
     if (!Array.isArray(products)) return false;
     catalogData.products = products;
+    if (options.clearBundledSamples) catalogData.sampleSets = [];
     const notes = new Set(catalogData.notes || []);
     products.forEach((product) => (product.notes || []).forEach((note) => notes.add(note)));
     catalogData.notes = Array.from(notes);
@@ -340,10 +364,69 @@
     const cssString = JSON.stringify(String(value || "")).replaceAll("<", "\\u003c");
     return `style="--image:url(${escapeHtml(cssString)})"`;
   }
+  var cartReturnFocus = null;
+  var accessibilityBound = false;
+  function focusableElements(root) {
+    return $all(
+      "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      root
+    ).filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+  }
+  function scheduleFocus(element) {
+    const focus = () => {
+      if (element == null ? void 0 : element.isConnected) element.focus();
+    };
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(focus);
+    } else {
+      setTimeout(focus, 0);
+    }
+  }
+  function bindCartAccessibility() {
+    if (accessibilityBound) return;
+    accessibilityBound = true;
+    document.addEventListener("keydown", (event) => {
+      const drawer = $("[data-cart-drawer]");
+      if (!(drawer == null ? void 0 : drawer.classList.contains("open"))) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeCart();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = focusableElements(drawer);
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (event.shiftKey && (document.activeElement === first || !drawer.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+  }
   function cartMarkup(compact = true) {
+    const publicFallback = document.body.dataset.publicBuild === "true";
+    const catalogUnavailable = !publicFallback && document.body.dataset.catalogStatus === "unavailable";
+    if (catalogUnavailable) {
+      return `
+      <div class="cart-empty" role="status">
+        <h2>\u5546\u54C1\u4FE1\u606F\u6682\u65F6\u65E0\u6CD5\u8BFB\u53D6</h2>
+        <p>\u4E3A\u907F\u514D\u663E\u793A\u8FC7\u671F\u4EF7\u683C\u6216\u5E93\u5B58\uFF0C\u610F\u5411\u6E05\u5355\u5DF2\u6682\u505C\u3002\u91CD\u65B0\u8FDE\u63A5\u540E\u518D\u7EE7\u7EED\u3002</p>
+        <div class="button-row">
+          <button class="button button-primary" type="button" data-retry-catalog>\u91CD\u65B0\u52A0\u8F7D</button>
+          <a class="button button-secondary" href="service.html">\u8054\u7CFB\u5BA2\u670D</a>
+        </div>
+      </div>
+    `;
+    }
     const entries = cartStore.getItems();
     const total = cartStore.getSubtotal();
-    const publicFallback = document.body.dataset.publicBuild === "true";
     if (!entries.length) {
       return `
       <div class="cart-empty">
@@ -390,10 +473,11 @@
       shell.dataset.cartShell = "";
       document.body.appendChild(shell);
     }
+    bindCartAccessibility();
     updateCartCount();
     shell.innerHTML = `
-    <aside class="cart-drawer" data-cart-drawer aria-hidden="true" aria-labelledby="cart-title">
-      <div class="cart-panel">
+    <aside class="cart-drawer" data-cart-drawer role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="cart-title" inert>
+      <div class="cart-panel" role="document">
         <div class="cart-header">
           <h2 id="cart-title">\u610F\u5411\u6E05\u5355</h2>
           <button class="icon-button" type="button" data-close-cart aria-label="\u5173\u95ED\u610F\u5411\u6E05\u5355">\xD7</button>
@@ -412,17 +496,32 @@
     $all("[data-cart-count]").forEach((node) => {
       node.textContent = count;
     });
+    $all("[data-cart-button]").forEach((button) => {
+      button.setAttribute("aria-label", `\u6253\u5F00\u610F\u5411\u6E05\u5355\uFF0C\u5F53\u524D ${count} \u4EF6`);
+    });
   }
-  function openCart() {
+  function openCart(trigger = null, focusSelector = "[data-close-cart]") {
     const drawer = $("[data-cart-drawer]");
+    if (!drawer) return;
+    const focusCandidate = trigger || document.activeElement;
+    if (!cartReturnFocus && (focusCandidate == null ? void 0 : focusCandidate.isConnected) && !drawer.contains(focusCandidate)) {
+      cartReturnFocus = focusCandidate;
+    }
+    drawer.removeAttribute("inert");
     drawer == null ? void 0 : drawer.classList.add("open");
     drawer == null ? void 0 : drawer.setAttribute("aria-hidden", "false");
     document.body.classList.add("locked");
+    scheduleFocus($(focusSelector, drawer) || $("[data-close-cart]", drawer));
   }
   function closeCart() {
     const drawer = $("[data-cart-drawer]");
-    drawer == null ? void 0 : drawer.classList.remove("open");
-    drawer == null ? void 0 : drawer.setAttribute("aria-hidden", "true");
+    if (!(drawer == null ? void 0 : drawer.classList.contains("open"))) return;
+    const returnFocus = cartReturnFocus;
+    cartReturnFocus = null;
+    if (returnFocus == null ? void 0 : returnFocus.isConnected) returnFocus.focus();
+    drawer.classList.remove("open");
+    drawer.setAttribute("aria-hidden", "true");
+    drawer.setAttribute("inert", "");
     document.body.classList.remove("locked");
   }
 
@@ -435,6 +534,17 @@
   }
   function getCurrentAdmin() {
     return apiFetch("/api/admin/auth/me");
+  }
+  function adminChangePassword(payload) {
+    return apiFetch("/api/admin/auth/change-password", {
+      method: "POST",
+      body: payload
+    });
+  }
+  function adminRevokeOtherSessions() {
+    return apiFetch("/api/admin/auth/sessions/revoke-others", {
+      method: "POST"
+    });
   }
   function adminGetMembers() {
     return apiFetch("/api/admin/members");
@@ -659,6 +769,17 @@
       node.textContent = message;
       node.classList.toggle("is-error", type === "error");
       node.classList.toggle("is-success", type === "success");
+    }, catalogUnavailableMarkup = function() {
+      return `
+      <div class="empty-state commerce-unavailable" role="alert">
+        <h2>\u5546\u54C1\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528</h2>
+        <p>\u4E3A\u907F\u514D\u663E\u793A\u8FC7\u671F\u4EF7\u683C\u6216\u5E93\u5B58\uFF0C\u5F53\u524D\u5DF2\u6682\u505C\u5546\u54C1\u6D4F\u89C8\u548C\u4E0B\u5355\u3002\u8BF7\u91CD\u65B0\u52A0\u8F7D\u540E\u518D\u8BD5\u3002</p>
+        <div class="button-row">
+          <button class="button button-primary" type="button" data-retry-catalog>\u91CD\u65B0\u52A0\u8F7D</button>
+          <a class="button button-secondary" href="service.html">\u8054\u7CFB\u5BA2\u670D</a>
+        </div>
+      </div>
+    `;
     }, actionIdempotencyKey = function(element, prefix, payload = {}) {
       const signature = JSON.stringify(payload);
       if (!element.dataset.idempotencyKey || element.dataset.idempotencySignature !== signature) {
@@ -981,13 +1102,13 @@
         <div class="sample-card-body">
           <span class="eyebrow">${escapeHtml2(set.volume)}</span>
           <h3>${escapeHtml2(set.name)}</h3>
-          <p>${escapeHtml2(set.intro)}</p>
+          <p>${escapeHtml2(set.intro || set.description)}</p>
           <div class="tag-row">${safeTagList(set.notes)}</div>
           <div class="price-row">
             <strong>${formatPrice(set.price)}</strong>
             <span>${escapeHtml2(set.bestFor)}</span>
           </div>
-          <button class="button button-primary" type="button" data-add-cart="${escapeHtml2(set.id)}">\u52A0\u5165\u610F\u5411\u6E05\u5355</button>
+          <button class="button button-primary" type="button" data-add-cart="${escapeHtml2(set.id)}" ${set.canPurchase === false ? "disabled" : ""}>${set.canPurchase === false ? "\u6682\u4E0D\u53EF\u8D2D\u4E70" : "\u52A0\u5165\u610F\u5411\u6E05\u5355"}</button>
         </div>
       </article>
     `;
@@ -1025,6 +1146,10 @@
     }, renderHome = function() {
       const newGrid = $2("[data-home-new]");
       if (newGrid) {
+        if (!state.catalogAvailable) {
+          newGrid.innerHTML = catalogUnavailableMarkup();
+          return;
+        }
         const items = catalogData.products.filter((product) => product.status.includes("New") || product.status.includes("\u4E70\u624B\u63A8\u8350")).slice(0, 4);
         newGrid.innerHTML = items.map((product) => productCard(product, { compact: true })).join("");
       }
@@ -1035,6 +1160,12 @@
       const noteWrap = $2("[data-note-filter]");
       const brandSelect = $2("[data-brand-filter]");
       const result = $2("[data-result-count]");
+      if (!state.catalogAvailable) {
+        if (form) form.setAttribute("inert", "");
+        if (result) result.textContent = "\u5546\u54C1\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528";
+        grid.innerHTML = catalogUnavailableMarkup();
+        return;
+      }
       if (noteWrap) {
         noteWrap.innerHTML = ["\u5168\u90E8", ...catalogData.notes].map((note) => `
         <label class="chip">
@@ -1103,6 +1234,10 @@
     }, renderProductPage = function() {
       const mount = $2("[data-product-page]");
       if (!mount) return;
+      if (!state.catalogAvailable) {
+        mount.innerHTML = catalogUnavailableMarkup();
+        return;
+      }
       if (!catalogData.products.length) {
         mount.innerHTML = `
         <div class="empty-state">
@@ -1266,7 +1401,13 @@
     `;
     }, renderSamples = function() {
       const grid = $2("[data-sample-grid]");
-      if (grid) grid.innerHTML = catalogData.sampleSets.map(sampleCard).join("");
+      if (!grid) return;
+      if (!state.catalogAvailable) {
+        grid.innerHTML = catalogUnavailableMarkup();
+        return;
+      }
+      const sampleProducts = catalogData.products.filter((product) => product.category === "sample");
+      grid.innerHTML = sampleProducts.length ? sampleProducts.map(sampleCard).join("") : `<div class="empty-state"><h2>\u8BD5\u9999\u5957\u88C5\u6B63\u5728\u6574\u7406</h2><p>\u5F53\u524D\u6CA1\u6709\u5DF2\u4E0A\u67B6\u7684\u8BD5\u9999\u7EC4\u5408\uFF0C\u53EF\u5148\u8054\u7CFB\u5BA2\u670D\u8BF4\u660E\u9999\u8C03\u504F\u597D\u3002</p><a class="button button-secondary" href="service.html">\u8054\u7CFB\u5BA2\u670D</a></div>`;
     }, renderJournal = function() {
       const grid = $2("[data-journal-grid]");
       if (grid) grid.innerHTML = catalogData.articles.map(articleCard).join("");
@@ -1402,6 +1543,77 @@
           setFormMessage(form, error.message, "error");
         }
       });
+    }, checkoutErrorDetails = function(error) {
+      const status = Number((error == null ? void 0 : error.status) || 0);
+      const message = String((error == null ? void 0 : error.message) || "\u8BF7\u6C42\u5931\u8D25\u3002");
+      if (status === 401) {
+        return { kind: "auth", title: "\u8BF7\u5148\u767B\u5F55", message: "\u767B\u5F55\u540E\u624D\u80FD\u8BFB\u53D6\u6536\u8D27\u5730\u5740\u5E76\u63D0\u4EA4\u8BA2\u5355\u3002" };
+      }
+      if (status === 409 || /库存|暂不可购买|已下架|售罄/.test(message)) {
+        return { kind: "stock", title: "\u90E8\u5206\u5546\u54C1\u6682\u65F6\u65E0\u6CD5\u8D2D\u4E70", message };
+      }
+      if (status === 0) {
+        return { kind: "network", title: "\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25", message: "\u6CA1\u6709\u6210\u529F\u8FDE\u63A5\u5230\u8BA2\u5355\u670D\u52A1\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u540E\u91CD\u8BD5\u3002" };
+      }
+      if (status >= 500) {
+        return { kind: "service", title: "\u8BA2\u5355\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528", message: "\u670D\u52A1\u5668\u6682\u65F6\u65E0\u6CD5\u786E\u8BA4\u4EF7\u683C\u548C\u5E93\u5B58\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002" };
+      }
+      return { kind: "request", title: "\u6682\u65F6\u65E0\u6CD5\u786E\u8BA4\u8BA2\u5355", message };
+    }, checkoutErrorMarkup = function(error) {
+      const details = checkoutErrorDetails(error);
+      if (details.kind === "auth") return requireLoginMarkup();
+      return `
+      <div class="empty-state checkout-error" role="alert">
+        <h2>${escapeHtml2(details.title)}</h2>
+        <p>${escapeHtml2(details.message)}</p>
+        <div class="button-row">
+          <button class="button button-primary" type="button" data-checkout-retry>\u91CD\u65B0\u68C0\u67E5\u8BA2\u5355</button>
+          <a class="button button-secondary" href="cart.html">\u8FD4\u56DE\u610F\u5411\u6E05\u5355</a>
+        </div>
+      </div>
+    `;
+    }, checkoutReviewMarkup = function(quote) {
+      var _a;
+      const discountKeys = [
+        "productDiscountAmountYuan",
+        "memberDiscountAmountYuan",
+        "couponDiscountAmountYuan",
+        "pointsDiscountAmountYuan"
+      ];
+      const totalDiscount = discountKeys.reduce((sum, key) => sum + Number(quote[key] || 0), 0);
+      return `
+      <section class="checkout-review" aria-labelledby="checkout-review-title">
+        <div class="checkout-section-heading">
+          <div>
+            <p class="eyebrow">Order review</p>
+            <h2 id="checkout-review-title">\u5546\u54C1\u660E\u7EC6</h2>
+          </div>
+          <a class="text-link" href="cart.html">\u4FEE\u6539\u6E05\u5355</a>
+        </div>
+        <div class="checkout-lines">
+          ${(quote.lines || []).map((line) => `
+            <article class="checkout-line">
+              <div>
+                <h3>${escapeHtml2(line.productName)}</h3>
+                <p>${escapeHtml2(line.brandName || "Scent Atoll")} \xB7 \u6570\u91CF ${escapeHtml2(line.quantity)}</p>
+                ${line.memberDiscountExcluded ? `<span>\u6B64\u5546\u54C1\u4E0D\u53C2\u4E0E\u4F1A\u5458\u6298\u6263</span>` : ""}
+              </div>
+              <dl>
+                <div><dt>\u5355\u4EF7</dt><dd>${moneyText(line.unitPriceYuan)}</dd></div>
+                <div><dt>\u5C0F\u8BA1</dt><dd>${moneyText(line.subtotalAmountYuan)}</dd></div>
+              </dl>
+            </article>
+          `).join("")}
+        </div>
+        <dl class="checkout-totals" aria-label="\u8BA2\u5355\u91D1\u989D">
+          <div><dt>\u5546\u54C1\u5C0F\u8BA1</dt><dd>${moneyText(quote.subtotalAmountYuan)}</dd></div>
+          <div><dt>\u4F18\u60E0</dt><dd class="checkout-discount">${totalDiscount > 0 ? `-${moneyText(totalDiscount)}` : moneyText(0)}</dd></div>
+          <div><dt>\u8FD0\u8D39</dt><dd>${moneyText(quote.shippingAmountYuan)}${Number(quote.shippingAmountYuan || 0) === 0 ? "\uFF08\u514D\u8FD0\u8D39\uFF09" : ""}</dd></div>
+          <div class="checkout-total-row"><dt>\u5E94\u4ED8\u603B\u989D</dt><dd>${moneyText(quote.paidAmountYuan)}</dd></div>
+        </dl>
+        ${((_a = quote.tier) == null ? void 0 : _a.name) ? `<p class="checkout-tier-note">\u5F53\u524D\u6309 ${escapeHtml2(quote.tier.name)} \u4F1A\u5458\u6743\u76CA\u8BA1\u4EF7\uFF0C\u786E\u8BA4\u6536\u8D27\u540E\u9884\u8BA1\u83B7\u5F97 ${escapeHtml2(quote.pointsToEarn || 0)} \u79EF\u5206\u3002</p>` : ""}
+      </section>
+    `;
     }, adminLocationState = function() {
       const raw = window.location.hash.replace(/^#/, "") || "overview";
       const [requestedView, query = ""] = raw.split("?");
@@ -1473,7 +1685,7 @@
       <div class="admin-record-actions">
         ${order.status === "pending_payment" ? `<button class="button button-primary" type="button" data-admin-pay="${escapeHtml2(order.id)}" data-payment-amount="${escapeHtml2(order.paidAmountYuan)}" data-order-no="${escapeHtml2(order.orderNo)}">\u786E\u8BA4\u6536\u6B3E</button>` : ""}
         ${["paid", "processing"].includes(order.status) ? `<button class="button button-secondary" type="button" data-admin-ship="${escapeHtml2(order.id)}" data-order-no="${escapeHtml2(order.orderNo)}">\u767B\u8BB0\u53D1\u8D27</button>` : ""}
-        ${["paid", "shipped"].includes(order.status) ? `<button class="button button-secondary" type="button" data-admin-complete="${escapeHtml2(order.id)}" data-order-no="${escapeHtml2(order.orderNo)}">\u4EE3\u5BA2\u786E\u8BA4\u6536\u8D27</button>` : ""}
+        ${order.status === "shipped" ? `<button class="button button-secondary" type="button" data-admin-complete="${escapeHtml2(order.id)}" data-order-no="${escapeHtml2(order.orderNo)}">\u4EE3\u5BA2\u786E\u8BA4\u6536\u8D27</button>` : ""}
         ${["paid", "shipped", "completed"].includes(order.status) ? `<button class="button button-danger" type="button" data-admin-refund="${escapeHtml2(order.id)}" data-order-no="${escapeHtml2(order.orderNo)}">\u767B\u8BB0\u9000\u6B3E</button>` : ""}
       </div>
     `;
@@ -1627,11 +1839,40 @@
       `;
       }).join("") || adminEmptyMarkup("\u6682\u65E0\u79EF\u5206\u6D41\u6C34", "\u8BA2\u5355\u7ED3\u7B97\u6216\u4EBA\u5DE5\u8C03\u6574\u540E\u4F1A\u663E\u793A\u8BB0\u5F55\u3002")}
     </div>`;
-    }, adminMoreMarkup = function(payload) {
+    }, adminMoreMarkup = function(payload, session) {
       const logs = payload.logs || [];
+      const securityMarkup = session.admin.role === "owner" ? `
+      <section class="admin-security-section" aria-labelledby="admin-security-title">
+        <div class="admin-section-heading">
+          <div><h2 id="admin-security-title">\u8D26\u53F7\u5B89\u5168</h2><p>\u4FEE\u6539\u5BC6\u7801\u4F1A\u81EA\u52A8\u9000\u51FA\u6B64 Owner \u5728\u5176\u4ED6\u8BBE\u5907\u4E0A\u7684\u540E\u53F0\u4F1A\u8BDD\u3002</p></div>
+        </div>
+        <div class="admin-security-grid">
+          <form class="admin-security-form" data-admin-change-password>
+            <h3>\u4FEE\u6539\u540E\u53F0\u5BC6\u7801</h3>
+            <label class="field-label">\u5F53\u524D\u5BC6\u7801<input name="currentPassword" type="password" autocomplete="current-password" required></label>
+            <label class="field-label">\u65B0\u5BC6\u7801<input name="newPassword" type="password" minlength="14" autocomplete="new-password" aria-describedby="admin-password-hint" required></label>
+            <p id="admin-password-hint">\u81F3\u5C11 14 \u4F4D\uFF0C\u4E14\u4E0D\u80FD\u4E0E\u5F53\u524D\u5BC6\u7801\u76F8\u540C\u3002</p>
+            <label class="field-label">\u518D\u6B21\u8F93\u5165\u65B0\u5BC6\u7801<input name="confirmPassword" type="password" minlength="14" autocomplete="new-password" required></label>
+            <p class="form-message" data-form-message aria-live="polite"></p>
+            <button class="button button-primary" type="submit">\u66F4\u65B0\u5BC6\u7801</button>
+          </form>
+          <form class="admin-security-form" data-admin-revoke-sessions-form>
+            <h3>\u767B\u5F55\u8BBE\u5907</h3>
+            <p>\u53D1\u73B0\u964C\u751F\u767B\u5F55\u6216\u4F7F\u7528\u8FC7\u516C\u7528\u7535\u8111\u65F6\uFF0C\u53EF\u9000\u51FA\u9664\u5F53\u524D\u6D4F\u89C8\u5668\u5916\u7684\u6240\u6709\u540E\u53F0\u4F1A\u8BDD\u3002</p>
+            <p class="form-message" data-form-message aria-live="polite"></p>
+            <button class="button button-secondary" type="submit">\u9000\u51FA\u5176\u4ED6\u8BBE\u5907</button>
+          </form>
+        </div>
+      </section>
+    ` : `
+      <section class="admin-security-section" aria-labelledby="admin-security-title">
+        <div class="admin-section-heading"><div><h2 id="admin-security-title">\u8D26\u53F7\u5B89\u5168</h2><p>\u540E\u53F0\u5BC6\u7801\u548C\u4F1A\u8BDD\u7531 Owner \u7EDF\u4E00\u7BA1\u7406\u3002</p></div></div>
+      </section>
+    `;
       return `
+      ${securityMarkup}
       <section class="admin-more-actions" aria-labelledby="admin-data-title">
-        <div><h2 id="admin-data-title">\u6570\u636E\u4E0E\u8D26\u53F7</h2><p>\u4F4E\u9891\u64CD\u4F5C\u96C6\u4E2D\u5728\u8FD9\u91CC\uFF0C\u907F\u514D\u6253\u65AD\u65E5\u5E38\u8BA2\u5355\u5904\u7406\u3002</p></div>
+        <div><h2 id="admin-data-title">\u6570\u636E\u4E0E\u9000\u51FA</h2><p>\u4F4E\u9891\u64CD\u4F5C\u96C6\u4E2D\u5728\u8FD9\u91CC\uFF0C\u907F\u514D\u6253\u65AD\u65E5\u5E38\u8BA2\u5355\u5904\u7406\u3002</p></div>
         <div class="button-row"><button class="button button-secondary" type="button" data-admin-export>\u5BFC\u51FA\u4F1A\u5458\u540D\u5355</button><button class="button button-secondary" type="button" data-admin-logout>\u9000\u51FA\u540E\u53F0</button></div>
       </section>
       <section class="admin-log-section">
@@ -1753,18 +1994,22 @@
       mounts.forEach((mount) => {
         mount.textContent = "\u8BD5\u8FD0\u8425\u671F\u95F4\u91C7\u7528\u5FAE\u4FE1\u4EBA\u5DE5\u8F6C\u8D26\u3002\u767B\u5F55\u540E\u53EF\u63D0\u4EA4\u8BA2\u5355\uFF0C\u5E93\u5B58\u4F1A\u77ED\u65F6\u9884\u7559\uFF0C\u5F85\u540E\u53F0\u6838\u5BF9\u8F6C\u8D26\u540E\u786E\u8BA4\u6536\u6B3E\u3002";
       });
-    }, addToCart = function(id) {
+    }, addToCart = function(id, trigger) {
+      if (!state.catalogAvailable) {
+        showToast("\u5546\u54C1\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u8BF7\u91CD\u65B0\u52A0\u8F7D\u540E\u518D\u8BD5\u3002");
+        return;
+      }
       try {
         const item = cartStore.addItem(id);
         renderCartShell();
         renderCartPage();
         refreshMemberQuote();
-        openCart();
+        openCart(trigger);
         showToast(`${item.name} \u5DF2\u52A0\u5165\u610F\u5411\u6E05\u5355`);
       } catch (error) {
         showToast(error.message);
       }
-    }, changeCart = function(id, delta) {
+    }, changeCart = function(id, delta, control) {
       var _a;
       const wasOpen = (_a = $2("[data-cart-drawer]")) == null ? void 0 : _a.classList.contains("open");
       try {
@@ -1772,7 +2017,10 @@
         renderCartShell();
         renderCartPage();
         refreshMemberQuote();
-        if (wasOpen) openCart();
+        if (wasOpen) {
+          const selector = `[data-cart-change="${CSS.escape(id)}"][data-delta="${Number(delta)}"]`;
+          openCart(control, selector);
+        }
       } catch (error) {
         showToast(error.message);
       }
@@ -1827,11 +2075,13 @@
         const adminProductArchive = event.target.closest("[data-admin-product-archive]");
         const adminRedemptionStatus = event.target.closest("[data-admin-redemption-status]");
         const adminRedemptionCancel = event.target.closest("[data-admin-redemption-cancel]");
-        if (add) addToCart(add.dataset.addCart);
+        const retryCatalog = event.target.closest("[data-retry-catalog]");
+        if (add) addToCart(add.dataset.addCart, add);
         if (fav) toggleFavorite(fav.dataset.favorite);
-        if (open) openCart();
+        if (open) openCart(open);
         if (close) closeCart();
-        if (change) changeCart(change.dataset.cartChange, Number(change.dataset.delta));
+        if (change) changeCart(change.dataset.cartChange, Number(change.dataset.delta), change);
+        if (retryCatalog) window.location.reload();
         if (service) showToast(service.dataset.serviceAction);
         if (logout) {
           try {
@@ -2070,7 +2320,8 @@
       });
     };
     const state = {
-      favorites: new Set(readStore("sa_favorites", []))
+      favorites: new Set(readStore("sa_favorites", [])),
+      catalogAvailable: true
     };
     initializeApp();
     async function initializeApp() {
@@ -2103,9 +2354,14 @@
     async function loadManagedProducts() {
       try {
         const payload = await apiFetch("/api/products");
-        replaceCatalogProducts(payload.products || []);
+        if (!Array.isArray(payload.products)) throw new Error("\u5546\u54C1\u6570\u636E\u683C\u5F0F\u65E0\u6548\u3002");
+        replaceCatalogProducts(payload.products || [], { clearBundledSamples: true });
+        document.body.dataset.catalogStatus = "ready";
       } catch (error) {
-        console.warn("Managed products unavailable; using bundled catalog.", error);
+        state.catalogAvailable = false;
+        replaceCatalogProducts([], { clearBundledSamples: true });
+        document.body.dataset.catalogStatus = "unavailable";
+        console.error("Managed products unavailable; commerce has been paused.", error);
       }
     }
     async function saveProductImageOrder(product, images, reason, primaryImageUrl = product.heroImageUrl || ((_a) => (_a = images[0]) == null ? void 0 : _a.imageUrl)() || "") {
@@ -2158,9 +2414,13 @@
       }
     }
     async function renderCheckoutPage() {
-      var _a;
+      var _a, _b;
       const mount = $2("[data-checkout-page]");
       if (!mount) return;
+      if (!state.catalogAvailable) {
+        mount.innerHTML = catalogUnavailableMarkup();
+        return;
+      }
       const items = cartStore.getItems().map((entry) => ({ productId: entry.id, quantity: entry.qty }));
       if (!items.length) {
         mount.innerHTML = `<div class="empty-state"><h2>\u8D2D\u7269\u6E05\u5355\u662F\u7A7A\u7684</h2><a class="button button-primary" href="shop.html">\u8FD4\u56DE\u9999\u6C34\u5217\u8868</a></div>`;
@@ -2170,8 +2430,10 @@
         const [quote, addressPayload] = await Promise.all([quoteOrder(items), getAddresses()]);
         const addresses = addressPayload.addresses || [];
         mount.innerHTML = `
-        <div class="member-summary"><strong>${moneyText(quote.paidAmountYuan)}</strong><span>\u5E94\u4ED8\u91D1\u989D\uFF0C\u542B\u8FD0\u8D39 ${moneyText(quote.shippingAmountYuan)}</span></div>
-        <form class="account-form" data-checkout-form>
+        <div class="checkout-layout">
+          ${checkoutReviewMarkup(quote)}
+          <form class="account-form checkout-form" data-checkout-form>
+          <div class="checkout-section-heading"><div><p class="eyebrow">Delivery</p><h2>\u914D\u9001\u4FE1\u606F</h2></div></div>
           ${addresses.length ? `<label class="field-label">\u6536\u8D27\u5730\u5740<select name="addressId" required>${addresses.map((address) => `<option value="${escapeHtml2(address.id)}">${escapeHtml2(`${address.recipientName} ${address.recipientPhone} ${address.province}${address.city}${address.district || ""}${address.addressLine}`)}</option>`).join("")}</select></label>` : `
             <label class="field-label">\u6536\u4EF6\u4EBA<input name="recipientName" required></label>
             <label class="field-label">\u624B\u673A\u53F7<input name="recipientPhone" inputmode="tel" required></label>
@@ -2181,9 +2443,10 @@
             <label class="field-label">\u8BE6\u7EC6\u5730\u5740<input name="addressLine" required></label>`}
           <label class="checkbox-row"><input name="acceptPrivacy" type="checkbox" required><span>\u6211\u5DF2\u9605\u8BFB\u5E76\u540C\u610F<a class="text-link" href="privacy.html" target="_blank" rel="noopener">\u9690\u79C1\u653F\u7B56</a></span></label>
           <label class="checkbox-row"><input name="acceptTerms" type="checkbox" required><span>\u6211\u5DF2\u9605\u8BFB\u5E76\u540C\u610F<a class="text-link" href="terms.html" target="_blank" rel="noopener">\u670D\u52A1\u6761\u6B3E</a></span></label>
-          <p class="form-message" data-form-message></p>
+          <p class="form-message" data-form-message aria-live="polite"></p>
           <button class="button button-primary" type="submit">\u63D0\u4EA4\u8BA2\u5355\u5E76\u83B7\u53D6\u8F6C\u8D26\u6307\u5F15</button>
-        </form>`;
+          </form>
+        </div>`;
         (_a = $2("[data-checkout-form]", mount)) == null ? void 0 : _a.addEventListener("submit", async (event) => {
           event.preventDefault();
           const form = event.currentTarget;
@@ -2217,14 +2480,18 @@
             renderCartShell();
             mount.innerHTML = `<div class="empty-state"><h2>\u8BA2\u5355 ${escapeHtml2(result.order.orderNo)} \u5DF2\u521B\u5EFA</h2><p>${escapeHtml2(payment.message)}</p><p>\u5BA2\u670D\u5FAE\u4FE1\uFF1A<strong>${escapeHtml2(payment.contactWechat || "\u8BF7\u67E5\u770B\u9875\u811A\u8054\u7CFB\u65B9\u5F0F")}</strong></p><a class="button button-primary" href="orders.html">\u67E5\u770B\u8BA2\u5355</a></div>`;
           } catch (error) {
-            setFormMessage(form, error.message, "error");
+            setFormMessage(form, checkoutErrorDetails(error).message, "error");
           } finally {
             form.dataset.submitting = "false";
             if (submitButton == null ? void 0 : submitButton.isConnected) submitButton.disabled = false;
           }
         });
-      } catch (e) {
-        mount.innerHTML = requireLoginMarkup();
+      } catch (error) {
+        mount.innerHTML = checkoutErrorMarkup(error);
+        (_b = $2("[data-checkout-retry]", mount)) == null ? void 0 : _b.addEventListener("click", async () => {
+          mount.innerHTML = `<div class="empty-state" role="status">\u6B63\u5728\u91CD\u65B0\u786E\u8BA4\u4EF7\u683C\u548C\u5E93\u5B58\u3002</div>`;
+          await renderCheckoutPage();
+        });
       }
     }
     async function renderAccountPage() {
@@ -2417,9 +2684,9 @@
             </div>
             <form class="account-form compact-account-form" data-redeem-form>
               <label class="field-label">\u5151\u6362\u6570\u91CF<input name="quantity" type="number" min="1" max="${item.stockQuantity}" value="1" required></label>
-              <label class="field-label">\u6536\u4EF6\u4EBA<input name="recipientName" value="${escapeHtml2(profile.user.name || "")}"></label>
-              <label class="field-label">\u8054\u7CFB\u7535\u8BDD<input name="recipientPhone" value="${escapeHtml2(profile.user.phone || "")}"></label>
-              <label class="field-label">\u6536\u8D27\u5730\u5740<input name="shippingAddress"></label>
+              <label class="field-label">\u6536\u4EF6\u4EBA<input name="recipientName" value="${escapeHtml2(profile.user.name || "")}" required></label>
+              <label class="field-label">\u8054\u7CFB\u7535\u8BDD<input name="recipientPhone" type="tel" inputmode="tel" pattern="1[3-9][0-9]{9}" value="${escapeHtml2(profile.user.phone || "")}" required></label>
+              <label class="field-label">\u6536\u8D27\u5730\u5740<input name="shippingAddress" required></label>
               <button class="button button-primary" type="submit" ${profile.profile.availablePoints < item.pointsPrice || item.stockQuantity <= 0 ? "disabled" : ""}>\u786E\u8BA4\u5151\u6362</button>
             </form>
           </div>
@@ -2505,7 +2772,7 @@
               </div>
               <strong>${moneyText(order.paidAmountYuan)}</strong>
               <span class="status-badge">${escapeHtml2(orderStatusLabel(order.status))}</span>
-              ${["paid", "shipped"].includes(order.status) ? `<button class="button button-secondary" type="button" data-confirm-receipt="${escapeHtml2(order.id)}">\u786E\u8BA4\u6536\u8D27</button>` : ""}
+              ${order.status === "shipped" ? `<button class="button button-secondary" type="button" data-confirm-receipt="${escapeHtml2(order.id)}">\u786E\u8BA4\u6536\u8D27</button>` : ""}
               ${order.status === "pending_payment" ? `<button class="button button-secondary" type="button" data-cancel-order="${escapeHtml2(order.id)}">\u53D6\u6D88\u8BA2\u5355</button>` : ""}
             </article>
           `).join("") : `<div class="empty-state">\u6682\u65E0\u8BA2\u5355\u3002</div>`}
@@ -2579,12 +2846,53 @@
       });
     }
     async function bindAdminViewForms(view, data) {
-      var _a, _b;
+      var _a, _b, _c, _d;
       const mount = $2("[data-admin-page]");
       if (!mount) return;
       const products = (data == null ? void 0 : data.products) || [];
       const productsById = new Map(products.map((product) => [product.id, product]));
-      (_a = $2("[data-admin-mall-item-form]", mount)) == null ? void 0 : _a.addEventListener("submit", async (event) => {
+      (_a = $2("[data-admin-change-password]", mount)) == null ? void 0 : _a.addEventListener("submit", async (event) => {
+        var _a2;
+        event.preventDefault();
+        const form = event.currentTarget;
+        const formData = new FormData(form);
+        const currentPassword = String(formData.get("currentPassword") || "");
+        const newPassword = String(formData.get("newPassword") || "");
+        const confirmPassword = String(formData.get("confirmPassword") || "");
+        if (newPassword !== confirmPassword) {
+          setFormMessage(form, "\u4E24\u6B21\u8F93\u5165\u7684\u65B0\u5BC6\u7801\u4E0D\u4E00\u81F4\u3002", "error");
+          (_a2 = $2("[name='confirmPassword']", form)) == null ? void 0 : _a2.focus();
+          return;
+        }
+        const submitButton = $2("button[type='submit']", form);
+        if (submitButton) submitButton.disabled = true;
+        setFormMessage(form, "\u6B63\u5728\u66F4\u65B0\u5BC6\u7801...");
+        try {
+          await adminChangePassword({ currentPassword, newPassword });
+          form.reset();
+          setFormMessage(form, "\u5BC6\u7801\u5DF2\u66F4\u65B0\uFF0C\u5176\u4ED6\u8BBE\u5907\u5DF2\u9000\u51FA\u540E\u53F0\u3002", "success");
+        } catch (error) {
+          setFormMessage(form, error.message, "error");
+        } finally {
+          if (submitButton) submitButton.disabled = false;
+        }
+      });
+      (_b = $2("[data-admin-revoke-sessions-form]", mount)) == null ? void 0 : _b.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const submitButton = $2("button[type='submit']", form);
+        if (submitButton) submitButton.disabled = true;
+        setFormMessage(form, "\u6B63\u5728\u9000\u51FA\u5176\u4ED6\u8BBE\u5907...");
+        try {
+          const result = await adminRevokeOtherSessions();
+          setFormMessage(form, `\u5DF2\u9000\u51FA ${Number(result.revokedSessions || 0)} \u4E2A\u5176\u4ED6\u540E\u53F0\u4F1A\u8BDD\u3002`, "success");
+        } catch (error) {
+          setFormMessage(form, error.message, "error");
+        } finally {
+          if (submitButton) submitButton.disabled = false;
+        }
+      });
+      (_c = $2("[data-admin-mall-item-form]", mount)) == null ? void 0 : _c.addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = event.currentTarget;
         const formData = new FormData(form);
@@ -2598,7 +2906,7 @@
           showToast(error.message);
         }
       });
-      (_b = $2("[data-admin-product-create]", mount)) == null ? void 0 : _b.addEventListener("submit", async (event) => {
+      (_d = $2("[data-admin-product-create]", mount)) == null ? void 0 : _d.addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = event.currentTarget;
         const payload = adminProductPayload(form);
@@ -2792,7 +3100,7 @@
           content.innerHTML = adminPointsMarkup(data);
         } else {
           data = await adminGetAuditLogs();
-          content.innerHTML = adminMoreMarkup(data);
+          content.innerHTML = adminMoreMarkup(data, session);
         }
         bindAdminListSearch(content);
         await bindAdminViewForms(view, data);

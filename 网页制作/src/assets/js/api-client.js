@@ -1,3 +1,13 @@
+export class ApiError extends Error {
+  constructor(message, options = {}) {
+    super(message, { cause: options.cause });
+    this.name = "ApiError";
+    this.status = Number(options.status || 0);
+    this.code = options.code || "API_ERROR";
+    this.path = options.path || "";
+  }
+}
+
 export async function apiFetch(path, options = {}) {
   const headers = Object.fromEntries(
     Object.entries({
@@ -5,18 +15,31 @@ export async function apiFetch(path, options = {}) {
       ...(options.headers || {})
     }).filter(([, value]) => value !== undefined && value !== null && value !== "")
   );
-  const response = await fetch(path, {
-    credentials: "same-origin",
-    headers,
-    ...options,
-    body: options.body && typeof options.body !== "string"
-      ? JSON.stringify(options.body)
-      : options.body
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      credentials: "same-origin",
+      ...options,
+      headers,
+      body: options.body && typeof options.body !== "string"
+        ? JSON.stringify(options.body)
+        : options.body
+    });
+  } catch (cause) {
+    throw new ApiError("网络连接失败，请检查网络后重试。", {
+      cause,
+      code: "NETWORK_ERROR",
+      path
+    });
+  }
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || "请求失败。");
+    throw new ApiError(payload.error || "请求失败。", {
+      status: response.status,
+      code: payload.code || "API_ERROR",
+      path
+    });
   }
   return payload;
 }

@@ -22,7 +22,10 @@ const filesToCopy = [
   "网页制作/vercel.json",
   "网页制作/scripts/release-migrate.mjs",
   "网页制作/scripts/check-commercial-deployment.mjs",
-  "网页制作/scripts/check-environment-isolation.mjs"
+  "网页制作/scripts/check-environment-isolation.mjs",
+  "网页制作/scripts/check-release-controls.mjs",
+  "网页制作/scripts/check-platform-release-settings.mjs",
+  "网页制作/scripts/check-vercel-auto-deploy.mjs"
 ];
 
 function copyTextFixture(tempRepo, filePath) {
@@ -117,6 +120,16 @@ describe("deployment config check", () => {
     assert.match(result.stderr, /buildCommand must not run db:seed/);
   }));
 
+  it("rejects Vercel configs that allow automatic main Production builds", () => withFixture((fixture) => {
+    mutateJson(path.join(fixture.repoRoot, "vercel.json"), (vercel) => {
+      delete vercel.ignoreCommand;
+    });
+
+    const result = runCheck(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /ignoreCommand should be node 网页制作\/scripts\/check-vercel-auto-deploy\.mjs/);
+  }));
+
   it("rejects Vercel configs without the stable product slug rewrite", () => withFixture((fixture) => {
     for (const filePath of [
       path.join(fixture.repoRoot, "vercel.json"),
@@ -186,5 +199,31 @@ describe("deployment config check", () => {
     const result = runCheck(fixture);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /migration, candidate deploy, verification, then promotion/);
+  }));
+
+  it("rejects a release workflow that pulls Sensitive Vercel environment values", () => withFixture((fixture) => {
+    const workflowPath = path.join(fixture.repoRoot, ".github/workflows/scent-atoll-release.yml");
+    const workflow = readFileSync(workflowPath, "utf8").replace(
+      "node scripts/check-release-controls.mjs",
+      "node scripts/check-release-controls.mjs && vercel env pull /tmp/production.env"
+    );
+    writeFileSync(workflowPath, workflow);
+
+    const result = runCheck(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must not use vercel env pull/);
+  }));
+
+  it("rejects scheduled reservation cleanup behind production release approval", () => withFixture((fixture) => {
+    const workflowPath = path.join(fixture.repoRoot, ".github/workflows/release-expired-reservations.yml");
+    const workflow = readFileSync(workflowPath, "utf8").replace(
+      "runs-on: ubuntu-latest",
+      "runs-on: ubuntu-latest\n    environment: production"
+    );
+    writeFileSync(workflowPath, workflow);
+
+    const result = runCheck(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must not use the reviewer-protected production Environment/);
   }));
 });

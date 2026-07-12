@@ -23,10 +23,75 @@ function safeImageStyle(value) {
   return `style="--image:url(${escapeHtml(cssString)})"`;
 }
 
+let cartReturnFocus = null;
+let accessibilityBound = false;
+
+function focusableElements(root) {
+  return $all(
+    "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+    root
+  ).filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+}
+
+function scheduleFocus(element) {
+  const focus = () => {
+    if (element?.isConnected) element.focus();
+  };
+  if (typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(focus);
+  } else {
+    setTimeout(focus, 0);
+  }
+}
+
+function bindCartAccessibility() {
+  if (accessibilityBound) return;
+  accessibilityBound = true;
+  document.addEventListener("keydown", (event) => {
+    const drawer = $("[data-cart-drawer]");
+    if (!drawer?.classList.contains("open")) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeCart();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = focusableElements(drawer);
+    if (!focusable.length) {
+      event.preventDefault();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (event.shiftKey && (document.activeElement === first || !drawer.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+}
+
 export function cartMarkup(compact = true) {
+  const publicFallback = document.body.dataset.publicBuild === "true";
+  const catalogUnavailable = !publicFallback && document.body.dataset.catalogStatus === "unavailable";
+
+  if (catalogUnavailable) {
+    return `
+      <div class="cart-empty" role="status">
+        <h2>商品信息暂时无法读取</h2>
+        <p>为避免显示过期价格或库存，意向清单已暂停。重新连接后再继续。</p>
+        <div class="button-row">
+          <button class="button button-primary" type="button" data-retry-catalog>重新加载</button>
+          <a class="button button-secondary" href="service.html">联系客服</a>
+        </div>
+      </div>
+    `;
+  }
+
   const entries = cartStore.getItems();
   const total = cartStore.getSubtotal();
-  const publicFallback = document.body.dataset.publicBuild === "true";
 
   if (!entries.length) {
     return `
@@ -77,11 +142,12 @@ export function renderCartShell() {
     document.body.appendChild(shell);
   }
 
+  bindCartAccessibility();
   updateCartCount();
 
   shell.innerHTML = `
-    <aside class="cart-drawer" data-cart-drawer aria-hidden="true" aria-labelledby="cart-title">
-      <div class="cart-panel">
+    <aside class="cart-drawer" data-cart-drawer role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="cart-title" inert>
+      <div class="cart-panel" role="document">
         <div class="cart-header">
           <h2 id="cart-title">意向清单</h2>
           <button class="icon-button" type="button" data-close-cart aria-label="关闭意向清单">×</button>
@@ -102,18 +168,33 @@ export function updateCartCount() {
   $all("[data-cart-count]").forEach((node) => {
     node.textContent = count;
   });
+  $all("[data-cart-button]").forEach((button) => {
+    button.setAttribute("aria-label", `打开意向清单，当前 ${count} 件`);
+  });
 }
 
-export function openCart() {
+export function openCart(trigger = null, focusSelector = "[data-close-cart]") {
   const drawer = $("[data-cart-drawer]");
+  if (!drawer) return;
+  const focusCandidate = trigger || document.activeElement;
+  if (!cartReturnFocus && focusCandidate?.isConnected && !drawer.contains(focusCandidate)) {
+    cartReturnFocus = focusCandidate;
+  }
+  drawer.removeAttribute("inert");
   drawer?.classList.add("open");
   drawer?.setAttribute("aria-hidden", "false");
   document.body.classList.add("locked");
+  scheduleFocus($(focusSelector, drawer) || $("[data-close-cart]", drawer));
 }
 
 export function closeCart() {
   const drawer = $("[data-cart-drawer]");
-  drawer?.classList.remove("open");
-  drawer?.setAttribute("aria-hidden", "true");
+  if (!drawer?.classList.contains("open")) return;
+  const returnFocus = cartReturnFocus;
+  cartReturnFocus = null;
+  if (returnFocus?.isConnected) returnFocus.focus();
+  drawer.classList.remove("open");
+  drawer.setAttribute("aria-hidden", "true");
+  drawer.setAttribute("inert", "");
   document.body.classList.remove("locked");
 }

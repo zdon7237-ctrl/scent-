@@ -15,6 +15,7 @@ import {
 import { cartStore } from "./cart-store.js";
 import { closeCart, openCart, renderCartPage, renderCartShell } from "./cart-ui.js";
 import {
+  adminChangePassword,
   adminAdjustMemberPoints,
   adminCancelRedemption,
   adminAdjustProductInventory,
@@ -32,6 +33,7 @@ import {
   adminLogout,
   adminPayOrder,
   adminRefundOrder,
+  adminRevokeOtherSessions,
   adminShipOrder,
   adminSetProductStatus,
   adminSetMallItemStatus,
@@ -53,7 +55,8 @@ import {
 
 if (hasCatalogData) {
   const state = {
-    favorites: new Set(readStore("sa_favorites", []))
+    favorites: new Set(readStore("sa_favorites", [])),
+    catalogAvailable: true
   };
 
   initializeApp();
@@ -89,9 +92,14 @@ if (hasCatalogData) {
   async function loadManagedProducts() {
     try {
       const payload = await apiFetch("/api/products");
-      replaceCatalogProducts(payload.products || []);
+      if (!Array.isArray(payload.products)) throw new Error("商品数据格式无效。");
+      replaceCatalogProducts(payload.products || [], { clearBundledSamples: true });
+      document.body.dataset.catalogStatus = "ready";
     } catch (error) {
-      console.warn("Managed products unavailable; using bundled catalog.", error);
+      state.catalogAvailable = false;
+      replaceCatalogProducts([], { clearBundledSamples: true });
+      document.body.dataset.catalogStatus = "unavailable";
+      console.error("Managed products unavailable; commerce has been paused.", error);
     }
   }
 
@@ -184,6 +192,19 @@ if (hasCatalogData) {
     node.textContent = message;
     node.classList.toggle("is-error", type === "error");
     node.classList.toggle("is-success", type === "success");
+  }
+
+  function catalogUnavailableMarkup() {
+    return `
+      <div class="empty-state commerce-unavailable" role="alert">
+        <h2>商品服务暂时不可用</h2>
+        <p>为避免显示过期价格或库存，当前已暂停商品浏览和下单。请重新加载后再试。</p>
+        <div class="button-row">
+          <button class="button button-primary" type="button" data-retry-catalog>重新加载</button>
+          <a class="button button-secondary" href="service.html">联系客服</a>
+        </div>
+      </div>
+    `;
   }
 
   function actionIdempotencyKey(element, prefix, payload = {}) {
@@ -558,13 +579,13 @@ if (hasCatalogData) {
         <div class="sample-card-body">
           <span class="eyebrow">${escapeHtml(set.volume)}</span>
           <h3>${escapeHtml(set.name)}</h3>
-          <p>${escapeHtml(set.intro)}</p>
+          <p>${escapeHtml(set.intro || set.description)}</p>
           <div class="tag-row">${safeTagList(set.notes)}</div>
           <div class="price-row">
             <strong>${formatPrice(set.price)}</strong>
             <span>${escapeHtml(set.bestFor)}</span>
           </div>
-          <button class="button button-primary" type="button" data-add-cart="${escapeHtml(set.id)}">加入意向清单</button>
+          <button class="button button-primary" type="button" data-add-cart="${escapeHtml(set.id)}" ${set.canPurchase === false ? "disabled" : ""}>${set.canPurchase === false ? "暂不可购买" : "加入意向清单"}</button>
         </div>
       </article>
     `;
@@ -609,6 +630,10 @@ if (hasCatalogData) {
   function renderHome() {
     const newGrid = $("[data-home-new]");
     if (newGrid) {
+      if (!state.catalogAvailable) {
+        newGrid.innerHTML = catalogUnavailableMarkup();
+        return;
+      }
       const items = data.products
         .filter((product) => product.status.includes("New") || product.status.includes("买手推荐"))
         .slice(0, 4);
@@ -624,6 +649,13 @@ if (hasCatalogData) {
     const noteWrap = $("[data-note-filter]");
     const brandSelect = $("[data-brand-filter]");
     const result = $("[data-result-count]");
+
+    if (!state.catalogAvailable) {
+      if (form) form.setAttribute("inert", "");
+      if (result) result.textContent = "商品服务暂时不可用";
+      grid.innerHTML = catalogUnavailableMarkup();
+      return;
+    }
 
     if (noteWrap) {
       noteWrap.innerHTML = ["全部", ...data.notes].map((note) => `
@@ -710,6 +742,11 @@ if (hasCatalogData) {
   function renderProductPage() {
     const mount = $("[data-product-page]");
     if (!mount) return;
+
+    if (!state.catalogAvailable) {
+      mount.innerHTML = catalogUnavailableMarkup();
+      return;
+    }
 
     if (!data.products.length) {
       mount.innerHTML = `
@@ -884,7 +921,15 @@ if (hasCatalogData) {
 
   function renderSamples() {
     const grid = $("[data-sample-grid]");
-    if (grid) grid.innerHTML = data.sampleSets.map(sampleCard).join("");
+    if (!grid) return;
+    if (!state.catalogAvailable) {
+      grid.innerHTML = catalogUnavailableMarkup();
+      return;
+    }
+    const sampleProducts = data.products.filter((product) => product.category === "sample");
+    grid.innerHTML = sampleProducts.length
+      ? sampleProducts.map(sampleCard).join("")
+      : `<div class="empty-state"><h2>试香套装正在整理</h2><p>当前没有已上架的试香组合，可先联系客服说明香调偏好。</p><a class="button button-secondary" href="service.html">联系客服</a></div>`;
   }
 
   function renderJournal() {
@@ -1076,9 +1121,89 @@ if (hasCatalogData) {
     });
   }
 
+  function checkoutErrorDetails(error) {
+    const status = Number(error?.status || 0);
+    const message = String(error?.message || "请求失败。");
+    if (status === 401) {
+      return { kind: "auth", title: "请先登录", message: "登录后才能读取收货地址并提交订单。" };
+    }
+    if (status === 409 || /库存|暂不可购买|已下架|售罄/.test(message)) {
+      return { kind: "stock", title: "部分商品暂时无法购买", message };
+    }
+    if (status === 0) {
+      return { kind: "network", title: "网络连接失败", message: "没有成功连接到订单服务，请检查网络后重试。" };
+    }
+    if (status >= 500) {
+      return { kind: "service", title: "订单服务暂时不可用", message: "服务器暂时无法确认价格和库存，请稍后重试。" };
+    }
+    return { kind: "request", title: "暂时无法确认订单", message };
+  }
+
+  function checkoutErrorMarkup(error) {
+    const details = checkoutErrorDetails(error);
+    if (details.kind === "auth") return requireLoginMarkup();
+    return `
+      <div class="empty-state checkout-error" role="alert">
+        <h2>${escapeHtml(details.title)}</h2>
+        <p>${escapeHtml(details.message)}</p>
+        <div class="button-row">
+          <button class="button button-primary" type="button" data-checkout-retry>重新检查订单</button>
+          <a class="button button-secondary" href="cart.html">返回意向清单</a>
+        </div>
+      </div>
+    `;
+  }
+
+  function checkoutReviewMarkup(quote) {
+    const discountKeys = [
+      "productDiscountAmountYuan",
+      "memberDiscountAmountYuan",
+      "couponDiscountAmountYuan",
+      "pointsDiscountAmountYuan"
+    ];
+    const totalDiscount = discountKeys.reduce((sum, key) => sum + Number(quote[key] || 0), 0);
+    return `
+      <section class="checkout-review" aria-labelledby="checkout-review-title">
+        <div class="checkout-section-heading">
+          <div>
+            <p class="eyebrow">Order review</p>
+            <h2 id="checkout-review-title">商品明细</h2>
+          </div>
+          <a class="text-link" href="cart.html">修改清单</a>
+        </div>
+        <div class="checkout-lines">
+          ${(quote.lines || []).map((line) => `
+            <article class="checkout-line">
+              <div>
+                <h3>${escapeHtml(line.productName)}</h3>
+                <p>${escapeHtml(line.brandName || "Scent Atoll")} · 数量 ${escapeHtml(line.quantity)}</p>
+                ${line.memberDiscountExcluded ? `<span>此商品不参与会员折扣</span>` : ""}
+              </div>
+              <dl>
+                <div><dt>单价</dt><dd>${moneyText(line.unitPriceYuan)}</dd></div>
+                <div><dt>小计</dt><dd>${moneyText(line.subtotalAmountYuan)}</dd></div>
+              </dl>
+            </article>
+          `).join("")}
+        </div>
+        <dl class="checkout-totals" aria-label="订单金额">
+          <div><dt>商品小计</dt><dd>${moneyText(quote.subtotalAmountYuan)}</dd></div>
+          <div><dt>优惠</dt><dd class="checkout-discount">${totalDiscount > 0 ? `-${moneyText(totalDiscount)}` : moneyText(0)}</dd></div>
+          <div><dt>运费</dt><dd>${moneyText(quote.shippingAmountYuan)}${Number(quote.shippingAmountYuan || 0) === 0 ? "（免运费）" : ""}</dd></div>
+          <div class="checkout-total-row"><dt>应付总额</dt><dd>${moneyText(quote.paidAmountYuan)}</dd></div>
+        </dl>
+        ${quote.tier?.name ? `<p class="checkout-tier-note">当前按 ${escapeHtml(quote.tier.name)} 会员权益计价，确认收货后预计获得 ${escapeHtml(quote.pointsToEarn || 0)} 积分。</p>` : ""}
+      </section>
+    `;
+  }
+
   async function renderCheckoutPage() {
     const mount = $("[data-checkout-page]");
     if (!mount) return;
+    if (!state.catalogAvailable) {
+      mount.innerHTML = catalogUnavailableMarkup();
+      return;
+    }
     const items = cartStore.getItems().map((entry) => ({ productId: entry.id, quantity: entry.qty }));
     if (!items.length) {
       mount.innerHTML = `<div class="empty-state"><h2>购物清单是空的</h2><a class="button button-primary" href="shop.html">返回香水列表</a></div>`;
@@ -1088,8 +1213,10 @@ if (hasCatalogData) {
       const [quote, addressPayload] = await Promise.all([quoteOrder(items), getAddresses()]);
       const addresses = addressPayload.addresses || [];
       mount.innerHTML = `
-        <div class="member-summary"><strong>${moneyText(quote.paidAmountYuan)}</strong><span>应付金额，含运费 ${moneyText(quote.shippingAmountYuan)}</span></div>
-        <form class="account-form" data-checkout-form>
+        <div class="checkout-layout">
+          ${checkoutReviewMarkup(quote)}
+          <form class="account-form checkout-form" data-checkout-form>
+          <div class="checkout-section-heading"><div><p class="eyebrow">Delivery</p><h2>配送信息</h2></div></div>
           ${addresses.length ? `<label class="field-label">收货地址<select name="addressId" required>${addresses.map((address) => `<option value="${escapeHtml(address.id)}">${escapeHtml(`${address.recipientName} ${address.recipientPhone} ${address.province}${address.city}${address.district || ""}${address.addressLine}`)}</option>`).join("")}</select></label>` : `
             <label class="field-label">收件人<input name="recipientName" required></label>
             <label class="field-label">手机号<input name="recipientPhone" inputmode="tel" required></label>
@@ -1099,9 +1226,10 @@ if (hasCatalogData) {
             <label class="field-label">详细地址<input name="addressLine" required></label>`}
           <label class="checkbox-row"><input name="acceptPrivacy" type="checkbox" required><span>我已阅读并同意<a class="text-link" href="privacy.html" target="_blank" rel="noopener">隐私政策</a></span></label>
           <label class="checkbox-row"><input name="acceptTerms" type="checkbox" required><span>我已阅读并同意<a class="text-link" href="terms.html" target="_blank" rel="noopener">服务条款</a></span></label>
-          <p class="form-message" data-form-message></p>
+          <p class="form-message" data-form-message aria-live="polite"></p>
           <button class="button button-primary" type="submit">提交订单并获取转账指引</button>
-        </form>`;
+          </form>
+        </div>`;
       $("[data-checkout-form]", mount)?.addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -1135,14 +1263,18 @@ if (hasCatalogData) {
           renderCartShell();
           mount.innerHTML = `<div class="empty-state"><h2>订单 ${escapeHtml(result.order.orderNo)} 已创建</h2><p>${escapeHtml(payment.message)}</p><p>客服微信：<strong>${escapeHtml(payment.contactWechat || "请查看页脚联系方式")}</strong></p><a class="button button-primary" href="orders.html">查看订单</a></div>`;
         } catch (error) {
-          setFormMessage(form, error.message, "error");
+          setFormMessage(form, checkoutErrorDetails(error).message, "error");
         } finally {
           form.dataset.submitting = "false";
           if (submitButton?.isConnected) submitButton.disabled = false;
         }
       });
-    } catch {
-      mount.innerHTML = requireLoginMarkup();
+    } catch (error) {
+      mount.innerHTML = checkoutErrorMarkup(error);
+      $("[data-checkout-retry]", mount)?.addEventListener("click", async () => {
+        mount.innerHTML = `<div class="empty-state" role="status">正在重新确认价格和库存。</div>`;
+        await renderCheckoutPage();
+      });
     }
   }
 
@@ -1320,9 +1452,9 @@ if (hasCatalogData) {
             </div>
             <form class="account-form compact-account-form" data-redeem-form>
               <label class="field-label">兑换数量<input name="quantity" type="number" min="1" max="${item.stockQuantity}" value="1" required></label>
-              <label class="field-label">收件人<input name="recipientName" value="${escapeHtml(profile.user.name || "")}"></label>
-              <label class="field-label">联系电话<input name="recipientPhone" value="${escapeHtml(profile.user.phone || "")}"></label>
-              <label class="field-label">收货地址<input name="shippingAddress"></label>
+              <label class="field-label">收件人<input name="recipientName" value="${escapeHtml(profile.user.name || "")}" required></label>
+              <label class="field-label">联系电话<input name="recipientPhone" type="tel" inputmode="tel" pattern="1[3-9][0-9]{9}" value="${escapeHtml(profile.user.phone || "")}" required></label>
+              <label class="field-label">收货地址<input name="shippingAddress" required></label>
               <button class="button button-primary" type="submit" ${profile.profile.availablePoints < item.pointsPrice || item.stockQuantity <= 0 ? "disabled" : ""}>确认兑换</button>
             </form>
           </div>
@@ -1410,7 +1542,7 @@ if (hasCatalogData) {
               </div>
               <strong>${moneyText(order.paidAmountYuan)}</strong>
               <span class="status-badge">${escapeHtml(orderStatusLabel(order.status))}</span>
-              ${["paid", "shipped"].includes(order.status) ? `<button class="button button-secondary" type="button" data-confirm-receipt="${escapeHtml(order.id)}">确认收货</button>` : ""}
+              ${order.status === "shipped" ? `<button class="button button-secondary" type="button" data-confirm-receipt="${escapeHtml(order.id)}">确认收货</button>` : ""}
               ${order.status === "pending_payment" ? `<button class="button button-secondary" type="button" data-cancel-order="${escapeHtml(order.id)}">取消订单</button>` : ""}
             </article>
           `).join("") : `<div class="empty-state">暂无订单。</div>`}
@@ -1551,7 +1683,7 @@ if (hasCatalogData) {
       <div class="admin-record-actions">
         ${order.status === "pending_payment" ? `<button class="button button-primary" type="button" data-admin-pay="${escapeHtml(order.id)}" data-payment-amount="${escapeHtml(order.paidAmountYuan)}" data-order-no="${escapeHtml(order.orderNo)}">确认收款</button>` : ""}
         ${["paid", "processing"].includes(order.status) ? `<button class="button button-secondary" type="button" data-admin-ship="${escapeHtml(order.id)}" data-order-no="${escapeHtml(order.orderNo)}">登记发货</button>` : ""}
-        ${["paid", "shipped"].includes(order.status) ? `<button class="button button-secondary" type="button" data-admin-complete="${escapeHtml(order.id)}" data-order-no="${escapeHtml(order.orderNo)}">代客确认收货</button>` : ""}
+        ${order.status === "shipped" ? `<button class="button button-secondary" type="button" data-admin-complete="${escapeHtml(order.id)}" data-order-no="${escapeHtml(order.orderNo)}">代客确认收货</button>` : ""}
         ${["paid", "shipped", "completed"].includes(order.status) ? `<button class="button button-danger" type="button" data-admin-refund="${escapeHtml(order.id)}" data-order-no="${escapeHtml(order.orderNo)}">登记退款</button>` : ""}
       </div>
     `;
@@ -1707,11 +1839,40 @@ if (hasCatalogData) {
     </div>`;
   }
 
-  function adminMoreMarkup(payload) {
+  function adminMoreMarkup(payload, session) {
     const logs = payload.logs || [];
+    const securityMarkup = session.admin.role === "owner" ? `
+      <section class="admin-security-section" aria-labelledby="admin-security-title">
+        <div class="admin-section-heading">
+          <div><h2 id="admin-security-title">账号安全</h2><p>修改密码会自动退出此 Owner 在其他设备上的后台会话。</p></div>
+        </div>
+        <div class="admin-security-grid">
+          <form class="admin-security-form" data-admin-change-password>
+            <h3>修改后台密码</h3>
+            <label class="field-label">当前密码<input name="currentPassword" type="password" autocomplete="current-password" required></label>
+            <label class="field-label">新密码<input name="newPassword" type="password" minlength="14" autocomplete="new-password" aria-describedby="admin-password-hint" required></label>
+            <p id="admin-password-hint">至少 14 位，且不能与当前密码相同。</p>
+            <label class="field-label">再次输入新密码<input name="confirmPassword" type="password" minlength="14" autocomplete="new-password" required></label>
+            <p class="form-message" data-form-message aria-live="polite"></p>
+            <button class="button button-primary" type="submit">更新密码</button>
+          </form>
+          <form class="admin-security-form" data-admin-revoke-sessions-form>
+            <h3>登录设备</h3>
+            <p>发现陌生登录或使用过公用电脑时，可退出除当前浏览器外的所有后台会话。</p>
+            <p class="form-message" data-form-message aria-live="polite"></p>
+            <button class="button button-secondary" type="submit">退出其他设备</button>
+          </form>
+        </div>
+      </section>
+    ` : `
+      <section class="admin-security-section" aria-labelledby="admin-security-title">
+        <div class="admin-section-heading"><div><h2 id="admin-security-title">账号安全</h2><p>后台密码和会话由 Owner 统一管理。</p></div></div>
+      </section>
+    `;
     return `
+      ${securityMarkup}
       <section class="admin-more-actions" aria-labelledby="admin-data-title">
-        <div><h2 id="admin-data-title">数据与账号</h2><p>低频操作集中在这里，避免打断日常订单处理。</p></div>
+        <div><h2 id="admin-data-title">数据与退出</h2><p>低频操作集中在这里，避免打断日常订单处理。</p></div>
         <div class="button-row"><button class="button button-secondary" type="button" data-admin-export>导出会员名单</button><button class="button button-secondary" type="button" data-admin-logout>退出后台</button></div>
       </section>
       <section class="admin-log-section">
@@ -1791,6 +1952,46 @@ if (hasCatalogData) {
     if (!mount) return;
     const products = data?.products || [];
     const productsById = new Map(products.map((product) => [product.id, product]));
+    $("[data-admin-change-password]", mount)?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const formData = new FormData(form);
+      const currentPassword = String(formData.get("currentPassword") || "");
+      const newPassword = String(formData.get("newPassword") || "");
+      const confirmPassword = String(formData.get("confirmPassword") || "");
+      if (newPassword !== confirmPassword) {
+        setFormMessage(form, "两次输入的新密码不一致。", "error");
+        $("[name='confirmPassword']", form)?.focus();
+        return;
+      }
+      const submitButton = $("button[type='submit']", form);
+      if (submitButton) submitButton.disabled = true;
+      setFormMessage(form, "正在更新密码...");
+      try {
+        await adminChangePassword({ currentPassword, newPassword });
+        form.reset();
+        setFormMessage(form, "密码已更新，其他设备已退出后台。", "success");
+      } catch (error) {
+        setFormMessage(form, error.message, "error");
+      } finally {
+        if (submitButton) submitButton.disabled = false;
+      }
+    });
+    $("[data-admin-revoke-sessions-form]", mount)?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const submitButton = $("button[type='submit']", form);
+      if (submitButton) submitButton.disabled = true;
+      setFormMessage(form, "正在退出其他设备...");
+      try {
+        const result = await adminRevokeOtherSessions();
+        setFormMessage(form, `已退出 ${Number(result.revokedSessions || 0)} 个其他后台会话。`, "success");
+      } catch (error) {
+        setFormMessage(form, error.message, "error");
+      } finally {
+        if (submitButton) submitButton.disabled = false;
+      }
+    });
     $("[data-admin-mall-item-form]", mount)?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const form = event.currentTarget;
@@ -1946,7 +2147,7 @@ if (hasCatalogData) {
         content.innerHTML = adminPointsMarkup(data);
       } else {
         data = await adminGetAuditLogs();
-        content.innerHTML = adminMoreMarkup(data);
+        content.innerHTML = adminMoreMarkup(data, session);
       }
       bindAdminListSearch(content);
       await bindAdminViewForms(view, data);
@@ -2075,27 +2276,34 @@ if (hasCatalogData) {
     });
   }
 
-  function addToCart(id) {
+  function addToCart(id, trigger) {
+    if (!state.catalogAvailable) {
+      showToast("商品服务暂时不可用，请重新加载后再试。");
+      return;
+    }
     try {
       const item = cartStore.addItem(id);
       renderCartShell();
       renderCartPage();
       refreshMemberQuote();
-      openCart();
+      openCart(trigger);
       showToast(`${item.name} 已加入意向清单`);
     } catch (error) {
       showToast(error.message);
     }
   }
 
-  function changeCart(id, delta) {
+  function changeCart(id, delta, control) {
     const wasOpen = $("[data-cart-drawer]")?.classList.contains("open");
     try {
       cartStore.changeQuantity(id, Number(delta));
       renderCartShell();
       renderCartPage();
       refreshMemberQuote();
-      if (wasOpen) openCart();
+      if (wasOpen) {
+        const selector = `[data-cart-change="${CSS.escape(id)}"][data-delta="${Number(delta)}"]`;
+        openCart(control, selector);
+      }
     } catch (error) {
       showToast(error.message);
     }
@@ -2158,12 +2366,14 @@ if (hasCatalogData) {
       const adminProductArchive = event.target.closest("[data-admin-product-archive]");
       const adminRedemptionStatus = event.target.closest("[data-admin-redemption-status]");
       const adminRedemptionCancel = event.target.closest("[data-admin-redemption-cancel]");
+      const retryCatalog = event.target.closest("[data-retry-catalog]");
 
-      if (add) addToCart(add.dataset.addCart);
+      if (add) addToCart(add.dataset.addCart, add);
       if (fav) toggleFavorite(fav.dataset.favorite);
-      if (open) openCart();
+      if (open) openCart(open);
       if (close) closeCart();
-      if (change) changeCart(change.dataset.cartChange, Number(change.dataset.delta));
+      if (change) changeCart(change.dataset.cartChange, Number(change.dataset.delta), change);
+      if (retryCatalog) window.location.reload();
       if (service) showToast(service.dataset.serviceAction);
       if (logout) {
         try {

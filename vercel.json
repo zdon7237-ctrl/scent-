@@ -1,6 +1,7 @@
 {
   "installCommand": "cd 网页制作 && npm ci --include=dev",
   "buildCommand": "cd 网页制作 && npm run check:env && npm run check:deploy && npm run build",
+  "ignoreCommand": "node 网页制作/scripts/check-vercel-auto-deploy.mjs",
   "outputDirectory": "网页制作/dist",
   "functions": {
     "api/[...path].mjs": {

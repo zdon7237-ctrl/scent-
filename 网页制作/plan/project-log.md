@@ -2,6 +2,75 @@
 
 本文件按日期倒序记录项目阶段、验证结果和下一步。它用于日常跟进，不替代发布清单或发布 Runbook。
 
+## 2026-07-13：发布前安全与可用性修复
+
+### 本次完成
+
+- 收紧订单状态转换：只有已发货且存在物流记录的订单可确认收货，通用状态接口不再绕过收款、发货和退款流程。
+- 补全收款、发货、退款、收货的幂等处理；重复发货不能覆盖原物流信息。
+- 退款撤回原订单发放的积分批次；该批积分已被消费时，退款原子失败，不产生负余额。
+- Owner 增加修改密码和撤销其他 Session；修改密码会轮换当前 Session。
+- 实物积分兑换要求收件人、大陆手机号和地址；存在处理中的兑换时阻止注销账号。
+- 账号注销会清理地址、token、生日、营销同意、兑换联系信息和邮件投递身份。
+- 前台增加持续可见的“意向清单”入口，购物车抽屉补全键盘焦点、Escape 关闭和焦点恢复。
+- 结账页显示商品、数量、单价、小计、优惠、运费、应付和预计积分，并区分登录、库存、网络和服务错误。商品 API 失败时不再使用本地价格继续下单。
+- 商业版商品数据只从数据库读取，移除 `sampleSets` 静态商品回退；新数据库初始化会把 3 个试香套装也写入商品表，已有数据库没有试香商品时页面显示明确空状态。
+- 修复积分到期边缘：某批积分部分兑换后到期，之后取消兑换时，返还的已过期积分会立即再次过期，不会错误复活。
+- 生产发布工作流增加 GitHub/Vercel 外部设置审计、Production/Preview 资源隔离检查，并跳过 `main` 的 Vercel Git 自动 Production 构建。
+- `main` 分支保护必须要求 `Scent Atoll CI / build-and-test`；库存清理定时 job 已移出需 reviewer 的 `production` Environment，避免 schedule 等待人工审批。
+
+### 验证记录
+
+- 定向积分过期回归测试通过；完整测试初跑共 147 项，唯一失败是新用例重复走后台登录，耗尽测试进程共享的内存 IP 限额；测试已改为直接注入隔离管理 Session，待推送后由 CI 重跑完整集。
+- `npm run build`、`npm run launch:check`、发布配置专项测试和 `git diff --check -- :/` 通过。
+- 本记录不把本地测试通过等同于平台配置或 Production 验收通过。
+
+### 待完成
+
+- 完成桌面、平板和手机视口的本地浏览器复核，再在最新 Vercel Preview 验证购物车、结账错误和 Owner 安全设置。
+- 现有 Preview 数据库仍只有 8 个旧商品；在 Preview 中通过后台安全补录 3 个 `category=sample` 试香套装后，才验证试香加购与结账。
+- 完成 GitHub `production` Environment reviewer/仅 `main`、`main` branch protection 和 release Secrets/Variables。
+- Vercel 项目从 Node 24.x 改为 22.x，处理账单地址警告，并按本项目门禁升级商业套餐。
+- 分离 Production/Preview 的 Blob、Upstash 和 Resend，完成 Production migration/bootstrap、正式 Owner、备份恢复和订单到退款演练。
+- 从 Vercel 资源详情页人工核对 Production/Preview 的 Blob Store ID、Upstash endpoint 和 Resend resource ID，录入 GitHub Variables 后才运行隔离脚本；脚本不会自动发现 Marketplace 资源。
+- 确认真实 `BUSINESS_NAME`、客服资料和 `DATA_RESIDENCY_DECISION`。上述门禁未通过前不合并 PR、不 Promote Production。
+
+## 2026-07-12：商业 Preview 数据库与平台资源验收
+
+### 本次完成
+
+- Resend 发信域名 `scentatoll.com` 的 DKIM、SPF 与 MX 已全部验证，Preview / Production 已接入 Resend，发件人为 `馥屿 <noreply@scentatoll.com>`。
+- 已创建 Neon 独立分支 `preview-commercial-launch`（ID：`br-wild-star-ahtci304`），从 `main` 仅复制 schema、不复制用户数据，并关闭自动删除。
+- Vercel 的 `DATABASE_URL` 已仅在 Preview 环境覆盖为该独立 Neon 分支；Production 数据库未修改。
+- Preview 已显式执行 release migration，验证到 `003_commercial_transaction_hardening`；未运行开发 seed。
+- Preview 已执行一次性 commerce bootstrap，写入 6 个会员等级、5 个积分商城商品和 8 个商品，未创建管理员账号。
+- 重新部署的 Vercel Preview 为 `https://scent-307m2qe75-scent-atoll.vercel.app`，deployment ID 为 `dpl_hqEcp1nYQn91AFTdLdXJDii1ncRb`，状态为 Ready。
+
+### 验证记录
+
+- `/api/health/live` 返回 `ok`。
+- `/api/health/ready` 返回 `ready`、`database: postgres`、`products: 8`、`commerceFoundation: true`。
+- `/api/products` 可读取数据库商品；匿名 `/api/auth/me` 返回空用户，匿名管理端接口拒绝访问。
+- 已在 Preview 分支临时创建并清理 `scent_preview_test` 数据库，真实 PostgreSQL migration/seed 幂等 smoke test 与全量 `npm test` 均通过，不再跳过数据库 smoke。
+- `npm run launch:check`、部署配置检查和 `git diff --check` 通过；静态应急包仍提示历史占位域名与客服资料，不能作为正式交易站发布。
+- Preview Owner 使用一次性受控初始化创建，不把开发默认管理员写入常驻环境变量。
+
+### Preview Owner 验证
+
+- 已在独立 Preview 数据库创建两个授权 Owner：`Coy` 与 `Xxx`；两者均为 `active / owner`，没有写入 Production。
+- 第一个账号通过一次性 bootstrap 创建；第二个账号使用受控事务创建，并分别写入 `bootstrap_owner` 与 `bootstrap_preview_owner` 审计记录。
+- 已在 Vercel Preview 的统一登录入口分别验证两个账号，均能自动进入管理端概览并获得 Owner 权限。
+- 登录验证未执行核款、发货、退款、库存调整或积分操作；临时密码未写入 Git、项目日志、Vercel 常驻变量或浏览器密码管理器。
+- 完整应用的共用顶部导航已补充客户账户入口：匿名访客显示“登录 / 注册”，会员显示“我的账户 / 积分 / 退出”，Owner 显示“管理后台”；手机导航展开后同样可见。
+- 静态应急降级包不包含账号和交易页，因此继续隐藏账户入口，避免产生不可用链接。
+
+### 尚未完成
+
+- 尚未执行真实 PostgreSQL 并发库存争抢、重复核款/退款/确认收货、积分兑换和 Session 安全测试。
+- 尚未完成桌面、手机及微信内置浏览器尺寸下的注册、下单、人工收款、发货、确认收货和退款全流程。
+- Blob、Upstash 与 Resend 当前仍由 Preview / Production 共享资源，尚未达到完全隔离门禁。
+- Production migration、备份恢复演练、正式 owner 初始化和正式域名全流程验收尚未执行；本次不合并 PR、不 Promote Production。
+
 ## 2026-07-12：商业发布平台接入
 
 ### 已完成
@@ -17,7 +86,7 @@
 - 代码已兼容 Vercel Blob OIDC 与 Upstash Marketplace 自动变量名；115 项测试 114 passed、1 skipped，构建通过。
 - 新增 `使用与维护说明.md`，记录前后端、外部平台、本地开发、修改和发布方法。
 
-### 当前阻塞与风险
+### 当时阻塞与风险
 
 - 本地提交 `c6467a2` 因 GitHub 网络间歇超时尚未确认推送；本地提交安全保留。
 - Resend 尚未完成项目连接、API Key 注入、DNS 验证与 `EMAIL_FROM` 配置。
@@ -129,42 +198,6 @@
 3. 在 Neon Preview 分支执行 migration、一次性 commerce bootstrap、owner bootstrap 和真实数据库 smoke/concurrency 测试。
 4. 在 Vercel Preview 完成桌面、手机和微信内置浏览器尺寸的订单到退款演练。
 5. 通过 `launch-readiness-checklist.md` 后再运行受保护的 Production release workflow。
-
-## 2026-07-12：商业 Preview 数据库与平台资源验收
-
-### 本次完成
-
-- Resend 发信域名 `scentatoll.com` 的 DKIM、SPF 与 MX 已全部验证，Preview / Production 已接入 Resend，发件人为 `馥屿 <noreply@scentatoll.com>`。
-- 已创建 Neon 独立分支 `preview-commercial-launch`（ID：`br-wild-star-ahtci304`），从 `main` 仅复制 schema、不复制用户数据，并关闭自动删除。
-- Vercel 的 `DATABASE_URL` 已仅在 Preview 环境覆盖为该独立 Neon 分支；Production 数据库未修改。
-- Preview 已显式执行 release migration，验证到 `003_commercial_transaction_hardening`；未运行开发 seed。
-- Preview 已执行一次性 commerce bootstrap，写入 6 个会员等级、5 个积分商城商品和 8 个商品，未创建管理员账号。
-- 重新部署的 Vercel Preview 为 `https://scent-307m2qe75-scent-atoll.vercel.app`，deployment ID 为 `dpl_hqEcp1nYQn91AFTdLdXJDii1ncRb`，状态为 Ready。
-
-### 验证记录
-
-- `/api/health/live` 返回 `ok`。
-- `/api/health/ready` 返回 `ready`、`database: postgres`、`products: 8`、`commerceFoundation: true`。
-- `/api/products` 可读取数据库商品；匿名 `/api/auth/me` 返回空用户，匿名管理端接口拒绝访问。
-- 已在 Preview 分支临时创建并清理 `scent_preview_test` 数据库，真实 PostgreSQL migration/seed 幂等 smoke test 与全量 `npm test` 均通过，不再跳过数据库 smoke。
-- `npm run launch:check`、部署配置检查和 `git diff --check` 通过；静态应急包仍提示历史占位域名与客服资料，不能作为正式交易站发布。
-- Preview Owner 使用一次性受控初始化创建，不把开发默认管理员写入常驻环境变量。
-
-### Preview Owner 验证
-
-- 已在独立 Preview 数据库创建两个授权 Owner：`Coy` 与 `Xxx`；两者均为 `active / owner`，没有写入 Production。
-- 第一个账号通过一次性 bootstrap 创建；第二个账号使用受控事务创建，并分别写入 `bootstrap_owner` 与 `bootstrap_preview_owner` 审计记录。
-- 已在 Vercel Preview 的统一登录入口分别验证两个账号，均能自动进入管理端概览并获得 Owner 权限。
-- 登录验证未执行核款、发货、退款、库存调整或积分操作；临时密码未写入 Git、项目日志、Vercel 常驻变量或浏览器密码管理器。
-- 完整应用的共用顶部导航已补充客户账户入口：匿名访客显示“登录 / 注册”，会员显示“我的账户 / 积分 / 退出”，Owner 显示“管理后台”；手机导航展开后同样可见。
-- 静态应急降级包不包含账号和交易页，因此继续隐藏账户入口，避免产生不可用链接。
-
-### 尚未完成
-
-- 尚未执行真实 PostgreSQL 并发库存争抢、重复核款/退款/确认收货、积分兑换和 Session 安全测试。
-- 尚未完成桌面、手机及微信内置浏览器尺寸下的注册、下单、人工收款、发货、确认收货和退款全流程。
-- Blob、Upstash 与 Resend 当前仍由 Preview / Production 共享资源，尚未达到完全隔离门禁。
-- Production migration、备份恢复演练、正式 owner 初始化和正式域名全流程验收尚未执行；本次不合并 PR、不 Promote Production。
 
 ## 历史记录入口
 

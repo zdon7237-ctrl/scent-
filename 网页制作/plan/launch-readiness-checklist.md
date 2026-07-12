@@ -1,11 +1,12 @@
 # 馥屿商业上线检查清单
 
-更新日期：2026-07-10
+更新日期：2026-07-13
 
 ## 工程门禁
 
 - [ ] `npm test`、`npm run build`、`npm run launch:preflight`、`npm run check:deploy` 全部通过。
 - [ ] Vercel 输出为 `dist/`，`/api/*` rewrite 指向 Function；build command 没有 migration、seed、`launch:strict` 或 `build:public`。
+- [ ] 根目录和应用目录的 Vercel `ignoreCommand` 均已生效；合并测试确认 `main` Git Production deployment 为 skipped，PR Preview 仍正常构建。
 - [ ] Netlify 仍只输出 `dist-public/`，并明确作为暂停动态功能后的应急降级。
 - [ ] 所有资金、积分、库存写操作的幂等与并发测试通过；PostgreSQL 真实测试分支完成 migration smoke test。
 - [ ] `scripts/check-commercial-deployment.mjs` 能检查完整页面、商品 API、匿名会员会话与匿名后台拒绝。
@@ -22,7 +23,8 @@
 ## 环境隔离
 
 - [ ] Vercel Production / Preview 分别设置 `DEPLOYMENT_ENV=production` / `preview`。
-- [ ] 两个环境的 Neon、Blob、Upstash、Resend 凭据不同；Production 与 Preview 均未配置开发用 `PAYMENT_WEBHOOK_SECRET`。
+- [ ] 两个环境使用不同 Neon branch、`BLOB_STORE_ID`、Upstash REST endpoint 和 Resend Marketplace resource ID；Production 与 Preview 均未配置开发用 `PAYMENT_WEBHOOK_SECRET`。
+- [ ] `check-environment-isolation.mjs` 使用实际资源 ID/URL 通过；没有用不同 token 掩盖同一 Blob/Upstash 资源。
 - [ ] 两个环境配置不同的至少 32 位 `CRON_SECRET`，未授权库存清理请求返回 401。
 - [ ] Production 的 `APP_ORIGIN` 与 `SITE_URL` 完全一致；Preview 使用预览域名。
 - [ ] Production 已填写真实 `BUSINESS_NAME`，并将 `DATA_RESIDENCY_DECISION` 设置为经证据确认的 `cross_border_approved` 或 `domestic_infrastructure`。
@@ -32,8 +34,11 @@
 
 ## 平台与发布
 
-- [ ] GitHub `production` Environment 只允许 `main`，有 required reviewer，不能绕过审批。
-- [ ] 已配置 `VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`、必要时的 bypass secret，以及 `PRODUCTION_URL`。
+- [ ] GitHub `production` Environment 只允许 `main`，有 required reviewer，不能绕过审批；`main` 要求 PR review、`Scent Atoll CI / build-and-test` 且规则包含管理员。
+- [ ] 已配置 `VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`、`GITHUB_RELEASE_AUDIT_TOKEN`、必要时的 bypass secret，以及完整的 Production/Preview 隔离 Secrets/Variables。
+- [ ] migration 使用 GitHub `PRODUCTION_DATABASE_URL`；release workflow 不含 `vercel env pull`、本地 `vercel build --prod` 或 `--prebuilt`。
+- [ ] Vercel 项目 Node.js 为 `22.x`，团队已升级为适合商业用途的套餐；Hobby 不通过发布门禁。
+- [ ] `check-platform-release-settings.mjs` 使用只读 token 实际通过，没有把外部平台设置按“已完成”口头勾选。
 - [ ] PR 对应 Neon branch 已迁移，Vercel Preview 完整业务流程和移动端流程通过。
 - [ ] Production Release workflow 按 migration -> candidate -> verify -> promote -> production verify 顺序完整成功。
 - [ ] 已记录发布前 deployment ID、migration ID 和可回滚的上一版本。
@@ -52,7 +57,7 @@
 
 - [ ] 桌面、手机和微信内置浏览器尺寸下完成注册、登录、下单、人工收款、发货、确认收货、退款和积分流程。
 - [ ] 重复点击、重复回调和网络重试不会重复扣库存、确认收款、退款或发积分。
-- [ ] Vercel 定时任务能取消超时未付款订单、释放预留库存并记录审计；重复执行返回 0 且不重复释放。
+- [ ] GitHub Actions 定时 job 使用仓库级 `PRODUCTION_URL` / `CRON_SECRET`，不引用需人工审批的 Production Environment；实际 schedule 能取消超时未付款订单、释放预留库存并记录审计，重复执行不重复释放。
 - [ ] 完成一次 production candidate 失败演练，确认不会 promote。
 - [ ] 完成应用 rollback 演练，确认 schema 向后兼容。
 - [ ] 完成 `dist-public/` 静态降级演练，并确认降级期间登录、会员、订单、积分和后台不可用且有运营通知。

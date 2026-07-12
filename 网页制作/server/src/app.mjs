@@ -404,12 +404,14 @@ function normalizeDb(db) {
 
 async function ensureDb() {
   const db = await repository.read();
-  if (!Object.keys(db).length) await repository.write(defaultDb());
+  if (Object.keys(db).length) return db;
+  const initialDb = defaultDb();
+  await repository.write(initialDb);
+  return initialDb;
 }
 
 async function readDb() {
-  await ensureDb();
-  const db = normalizeDb(await repository.read());
+  const db = normalizeDb(await ensureDb());
   if (autoWriteCatalogSeed && ensureCatalogProducts(db)) await writeDb(db);
   return db;
 }
@@ -737,18 +739,12 @@ function logAdminOperation(db, req, action, entityType, entityId, before, after,
 function expirePointsForUser(db, userId) {
   const profile = db.memberProfiles.find((item) => item.userId === userId);
   if (!profile) return false;
-  const expiredSourceIds = new Set(
-    db.pointTransactions
-      .filter((item) => item.type === "expire_points" && item.sourceTransactionId)
-      .map((item) => item.sourceTransactionId)
-  );
   const nowMs = Date.now();
   let changed = false;
   db.pointTransactions
     .filter((item) => isPointBatch(item) && item.userId === userId && item.expiresAt && new Date(item.expiresAt).getTime() <= nowMs)
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
     .forEach((item) => {
-      if (expiredSourceIds.has(item.id)) return;
       const pointsToExpire = Math.min(pointBatchRemaining(db, item), Math.max(0, profile.availablePoints));
       if (pointsToExpire <= 0) return;
       profile.availablePoints -= pointsToExpire;
@@ -1603,6 +1599,17 @@ function createPointsRedemption(db, user, body) {
   if (quantity > item.stockQuantity) throw new Error("积分商品库存不足。");
   const itemPayload = mallItemPayload(item, db);
   const totalPoints = itemPayload.pointsPrice * quantity;
+  const savedAddress = body.addressId
+    ? db.addresses.find((entry) => entry.id === body.addressId && entry.userId === user.id)
+    : db.addresses.find((entry) => entry.userId === user.id && entry.isDefault);
+  const recipientName = cleanText(body.recipientName || savedAddress?.recipientName || user.name);
+  const recipientPhone = cleanText(body.recipientPhone || savedAddress?.recipientPhone || user.phone);
+  const shippingAddress = cleanText(body.shippingAddress || (savedAddress
+    ? [savedAddress.province, savedAddress.city, savedAddress.district, savedAddress.addressLine].filter(Boolean).join("")
+    : ""));
+  if (!recipientName) throw new Error("兑换商品的收件人姓名必填。");
+  if (!/^1[3-9]\d{9}$/.test(recipientPhone)) throw new Error("请填写有效的中国大陆收件手机号。");
+  if (!shippingAddress) throw new Error("兑换商品的收货地址必填。");
   const order = {
     id: randomUUID(),
     orderNo: createRedemptionOrderNo(),
@@ -1610,9 +1617,9 @@ function createPointsRedemption(db, user, body) {
     userId: user.id,
     status: "pending_fulfillment",
     totalPoints,
-    recipientName: String(body.recipientName || user.name || "").trim(),
-    recipientPhone: String(body.recipientPhone || user.phone || "").trim(),
-    shippingAddress: String(body.shippingAddress || "").trim(),
+    recipientName,
+    recipientPhone,
+    shippingAddress,
     trackingNo: null,
     shippedAt: null,
     completedAt: null,
@@ -1928,17 +1935,17 @@ function markOrderPaid(db, order, options = {}) {
 }
 
 function settleCompletedOrder(db, order) {
-  if (order.pointsAwarded > 0) {
-    if (order.status !== "completed") {
-      order.status = "completed";
-      order.completedAt = order.completedAt || now();
-      order.updatedAt = now();
-    }
+  if (order.status === "completed") {
     return { points: order.pointsAwarded, upgraded: false, alreadyProcessed: true };
   }
-  if (!["paid", "processing", "shipped", "completed"].includes(order.status)) {
-    throw new Error("只有已支付或已发货订单可以确认收货。");
+  if (order.status !== "shipped") {
+    throw new Error("只有已发货订单可以确认收货。");
   }
+  if (Number(order.pointsAwarded || 0) > 0) {
+    throw new Error("订单积分已结算但状态异常，请人工核对后再处理。");
+  }
+  const shipment = db.shipments.find((item) => item.orderId === order.id);
+  if (!shipment) throw new Error("订单缺少发货记录，请先核对物流信息。");
   const profile = db.memberProfiles.find((item) => item.userId === order.userId);
   const oldTier = db.memberTiers.find((item) => item.id === profile.tierId);
   const orderTier = db.memberTiers.find((item) => item.id === order.memberTierId) || oldTier;
@@ -1951,6 +1958,9 @@ function settleCompletedOrder(db, order) {
   order.status = "completed";
   order.completedAt = completedAt;
   order.updatedAt = now();
+  shipment.status = "delivered";
+  shipment.deliveredAt = shipment.deliveredAt || completedAt;
+  shipment.updatedAt = now();
   db.pointTransactions.push({
     id: randomUUID(),
     userId: order.userId,
@@ -2000,7 +2010,26 @@ function refundPaidOrder(db, order, options = {}) {
   const oldTier = db.memberTiers.find((item) => item.id === profile.tierId);
   const wasSettled = order.status === "completed" || Number(order.pointsAwarded || 0) > 0;
   const pointsToReverse = Number(order.pointsAwarded || 0);
-  if (pointsToReverse > 0) profile.availablePoints -= pointsToReverse;
+  const earnedBatch = pointsToReverse > 0
+    ? db.pointTransactions.find((item) => item.orderId === order.id && item.type === "earn_order")
+    : null;
+  let pointsDeducted = pointsToReverse;
+  if (pointsToReverse > 0 && (!earnedBatch || Number(earnedBatch.points || 0) !== pointsToReverse)) {
+    throw new Error("订单奖励积分账本不一致，请人工核对后再退款。");
+  }
+  if (earnedBatch) {
+    const outstandingRedemptionPoints = Math.max(0, -db.pointTransactions
+      .filter((item) => item.sourceTransactionId === earnedBatch.id && ["redeem_points", "redeem_refund"].includes(item.type))
+      .reduce((sum, item) => sum + Number(item.points || 0), 0));
+    if (outstandingRedemptionPoints > 0) {
+      throw new Error(`订单奖励积分已有 ${outstandingRedemptionPoints} 分被使用，请先取消关联积分兑换或补回后再退款。`);
+    }
+    pointsDeducted = Math.min(pointsToReverse, pointBatchRemaining(db, earnedBatch));
+    if (Number(profile.availablePoints || 0) < pointsDeducted) {
+      throw new Error("会员当前可用积分不足以扣回该订单奖励，请先核对积分账本。");
+    }
+  }
+  if (pointsDeducted > 0) profile.availablePoints -= pointsDeducted;
   if (wasSettled) profile.lifetimePaidAmount = Math.max(0, profile.lifetimePaidAmount - order.eligiblePaidAmount);
   profile.updatedAt = now();
   order.status = "refunded";
@@ -2032,13 +2061,14 @@ function refundPaidOrder(db, order, options = {}) {
       });
     });
   }
-  if (pointsToReverse > 0) {
+  if (pointsDeducted > 0) {
     db.pointTransactions.push({
       id: randomUUID(),
       userId: order.userId,
       orderId: order.id,
+      sourceTransactionId: earnedBatch?.id || null,
       type: "refund_reversal",
-      points: -pointsToReverse,
+      points: -pointsDeducted,
       balanceAfter: profile.availablePoints,
       expiresAt: null,
       note: `订单 ${order.orderNo} 退款扣回积分`,
@@ -2062,7 +2092,7 @@ function refundPaidOrder(db, order, options = {}) {
     });
   }
   return {
-    pointsReversed: pointsToReverse,
+    pointsReversed: pointsDeducted,
     lifetimePaidAmount: profile.lifetimePaidAmount,
     tierChanged,
     toTier: newTier,
@@ -2374,13 +2404,37 @@ async function handleApiWithDb(req, res, pathname, db, persist, afterCommit = ()
       if (!verifyPassword(String(body.password || ""), user.passwordHash)) return sendError(res, 403, "密码错误。");
       const activeOrder = db.orders.find((item) => item.userId === user.id && !["completed", "cancelled", "refunded"].includes(item.status));
       if (activeOrder) return sendError(res, 409, "存在未完成订单，暂时不能注销账号。");
+      const activeRedemption = db.pointsRedemptionOrders.find((item) => item.userId === user.id && !["completed", "cancelled"].includes(item.status));
+      if (activeRedemption) return sendError(res, 409, "存在待处理积分兑换，暂时不能注销账号。");
       user.status = "deleted";
       user.email = `deleted-${user.id}@invalid.local`;
       user.phone = null;
       user.name = "已注销会员";
       user.passwordHash = hashPassword(randomBytes(32).toString("hex"));
       user.updatedAt = now();
+      const profile = db.memberProfiles.find((item) => item.userId === user.id);
+      if (profile) {
+        profile.birthday = null;
+        profile.acceptsMarketing = false;
+        profile.updatedAt = now();
+      }
       db.addresses = db.addresses.filter((item) => item.userId !== user.id);
+      db.emailVerificationTokens = db.emailVerificationTokens.filter((item) => item.userId !== user.id);
+      db.passwordResetTokens = db.passwordResetTokens.filter((item) => item.userId !== user.id);
+      db.pointsRedemptionOrders.forEach((item) => {
+        if (item.userId !== user.id) return;
+        item.recipientName = "已注销会员";
+        item.recipientPhone = null;
+        item.shippingAddress = null;
+        item.updatedAt = now();
+      });
+      db.emailDeliveries.forEach((item) => {
+        if (item.userId !== user.id) return;
+        item.userId = null;
+        item.recipient = `deleted-${user.id}@invalid.local`;
+        item.errorMessage = null;
+        item.updatedAt = now();
+      });
       db.sessions.forEach((session) => { if (session.userId === user.id) session.revokedAt = now(); });
       await persist();
       return sendJson(res, 200, { ok: true }, { "set-cookie": clearSessionCookie() });
@@ -2808,6 +2862,51 @@ async function handleApiWithDb(req, res, pathname, db, persist, afterCommit = ()
     if (req.method === "GET" && pathname === "/api/admin/auth/me") {
       if (!requireAdmin(res, admin)) return;
       return sendJson(res, 200, { admin: publicAdmin(admin) });
+    }
+
+    if (req.method === "POST" && pathname === "/api/admin/auth/change-password") {
+      if (!requireAdmin(res, admin)) return;
+      if (admin.role !== "owner") return sendError(res, 403, "只有 Owner 可以修改后台密码。");
+      const currentPassword = String(body.currentPassword || "");
+      const newPassword = String(body.newPassword || "");
+      if (!verifyPassword(currentPassword, admin.passwordHash)) return sendError(res, 403, "当前密码错误。");
+      if (newPassword.length < 14) return sendError(res, 400, "后台新密码至少需要 14 位。");
+      if (verifyPassword(newPassword, admin.passwordHash)) return sendError(res, 400, "新密码不能与当前密码相同。");
+      const changedAt = now();
+      admin.passwordHash = hashPassword(newPassword);
+      admin.updatedAt = changedAt;
+      db.adminSessions.forEach((session) => {
+        if (session.adminUserId === admin.id) session.revokedAt = changedAt;
+      });
+      const session = {
+        id: randomUUID(),
+        adminUserId: admin.id,
+        createdAt: changedAt,
+        expiresAt: new Date(Date.now() + sessionMaxAgeMs).toISOString(),
+        lastSeenAt: changedAt,
+        revokedAt: null
+      };
+      db.adminSessions.push(session);
+      req.currentAdmin = admin;
+      logAdminOperation(db, req, "change_admin_password", "admin_user", admin.id, null, { sessionsRotated: true }, "Owner 修改后台密码");
+      await persist();
+      return sendJson(res, 200, { ok: true, admin: publicAdmin(admin) }, { "set-cookie": adminSessionCookie(session.id) });
+    }
+
+    if (req.method === "POST" && pathname === "/api/admin/auth/sessions/revoke-others") {
+      if (!requireAdmin(res, admin)) return;
+      if (admin.role !== "owner") return sendError(res, 403, "只有 Owner 可以撤销后台会话。");
+      const currentSessionId = parseCookies(req.headers.cookie).sa_admin_session;
+      let revokedSessions = 0;
+      db.adminSessions.forEach((session) => {
+        if (session.adminUserId !== admin.id || session.id === currentSessionId || session.revokedAt) return;
+        session.revokedAt = now();
+        revokedSessions += 1;
+      });
+      req.currentAdmin = admin;
+      logAdminOperation(db, req, "revoke_other_admin_sessions", "admin_user", admin.id, null, { revokedSessions }, "Owner 撤销其他后台会话");
+      await persist();
+      return sendJson(res, 200, { ok: true, revokedSessions });
     }
 
     if (pathname.startsWith("/api/admin")) {
@@ -3363,17 +3462,19 @@ async function handleApiWithDb(req, res, pathname, db, persist, afterCommit = ()
         if (!guard("orders:write")) return;
         const order = db.orders.find((item) => item.id === shipOrderMatch[1]);
         if (!order) return sendError(res, 404, "订单不存在。");
-        if (!["paid", "processing", "shipped"].includes(order.status)) return sendError(res, 409, "只有已收款订单可以发货。");
         const carrier = cleanText(body.carrier);
         const trackingNo = cleanText(body.trackingNo);
         if (!carrier || !trackingNo) return sendError(res, 400, "物流公司和物流单号必填。");
-        let shipment = db.shipments.find((item) => item.orderId === order.id);
-        if (!shipment) {
-          shipment = { id: randomUUID(), orderId: order.id, carrier, trackingNo, status: "shipped", shippedAt: now(), deliveredAt: null, createdAt: now(), updatedAt: now() };
-          db.shipments.push(shipment);
-        } else {
-          Object.assign(shipment, { carrier, trackingNo, status: "shipped", shippedAt: shipment.shippedAt || now(), updatedAt: now() });
+        const existingShipment = db.shipments.find((item) => item.orderId === order.id);
+        if (existingShipment) {
+          if (existingShipment.carrier === carrier && existingShipment.trackingNo === trackingNo) {
+            return sendJson(res, 200, { order: orderPayload(db, order), shipment: existingShipment, alreadyProcessed: true });
+          }
+          return sendError(res, 409, "订单已发货，不能通过重复发货修改物流信息。");
         }
+        if (!["paid", "processing"].includes(order.status)) return sendError(res, 409, "只有已收款订单可以发货。");
+        const shipment = { id: randomUUID(), orderId: order.id, carrier, trackingNo, status: "shipped", shippedAt: now(), deliveredAt: null, createdAt: now(), updatedAt: now() };
+        db.shipments.push(shipment);
         const before = orderPayload(db, order);
         order.status = "shipped";
         order.updatedAt = now();
@@ -3399,33 +3500,22 @@ async function handleApiWithDb(req, res, pathname, db, persist, afterCommit = ()
         if (!order) return sendError(res, 404, "订单不存在。");
         const allowed = ["pending_payment", "paid", "processing", "shipped", "completed", "cancelled", "refunded"];
         if (!allowed.includes(body.status)) return sendError(res, 400, "订单状态不合法。");
+        if (body.status === order.status) {
+          return sendJson(res, 200, { order: orderPayload(db, order), result: { alreadyProcessed: true } });
+        }
         const before = orderPayload(db, order);
         let result = null;
-        if (body.status === "paid" && order.status === "pending_payment") {
-          result = markOrderPaid(db, order, {
-            adminId: admin.id,
-            reference: body.paymentReference || body.reference,
-            paymentAmount: body.paymentAmount ?? order.paidAmount,
-            idempotencyKey: idempotencyKey(req, body)
-          });
-        } else if (body.status === "completed") {
-          result = settleCompletedOrder(db, order);
-        } else if (body.status === "refunded" && order.status !== "refunded") {
-          result = refundPaidOrder(db, order, {
-            reason: body.reason,
-            restock: body.restock !== false,
-            reference: body.refundReference || body.reference,
-            adminId: admin.id
-          });
-        } else if (body.status === "cancelled" && order.status === "pending_payment") {
+        if (body.status === "cancelled" && order.status === "pending_payment") {
           result = { inventoryReleased: releaseOrderInventory(db, order, "order_cancelled") };
           order.status = "cancelled";
           order.cancelledAt = now();
           order.cancellationReason = cleanText(body.reason || "admin_cancelled");
           order.updatedAt = now();
-        } else {
-          order.status = body.status;
+        } else if (body.status === "processing" && order.status === "paid") {
+          order.status = "processing";
           order.updatedAt = now();
+        } else {
+          return sendError(res, 409, "该状态变更必须使用核款、发货、确认收货、退款或取消的专用操作。");
         }
         logAdminOperation(
           db,
@@ -3514,7 +3604,11 @@ async function handleApiWithDb(req, res, pathname, db, persist, afterCommit = ()
         if (!guard("orders:write")) return;
         const order = db.orders.find((item) => item.id === payMatch[1]);
         if (!order) return sendError(res, 404, "订单不存在。");
-        if (order.status !== "pending_payment") return sendJson(res, 200, { order: orderPayload(db, order), alreadyProcessed: true });
+        if (order.status !== "pending_payment") {
+          const existingPayment = db.payments.find((item) => item.orderId === order.id && item.status === "succeeded");
+          if (existingPayment) return sendJson(res, 200, { order: orderPayload(db, order), alreadyProcessed: true });
+          return sendError(res, 409, "该订单当前状态不能确认收款。");
+        }
         const before = orderPayload(db, order);
         const result = markOrderPaid(db, order, {
           adminId: admin.id,

@@ -41,7 +41,23 @@ function loadCatalogProducts() {
   const source = path.join(rootDir, "src/assets/data.js");
   const sandbox = { window: {} };
   vm.runInNewContext(readFileSync(source, "utf8"), sandbox);
-  return sandbox.window.SA_DATA?.products || [];
+  const catalog = sandbox.window.SA_DATA || {};
+  const sampleSets = (catalog.sampleSets || []).map((item) => ({
+    ...item,
+    brand: "Scent Atoll",
+    brandId: null,
+    category: "sample",
+    country: "Curated",
+    stock: "现货",
+    concentration: "Sample Set",
+    family: "试香套装",
+    description: item.intro,
+    scenes: ["daily", "gift"],
+    mood: ["clean"],
+    sweetness: "medium",
+    status: ["Sample"]
+  }));
+  return [...(catalog.products || []), ...sampleSets];
 }
 
 function productRowsFromCatalog() {

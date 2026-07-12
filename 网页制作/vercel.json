@@ -1,5 +1,6 @@
 {
   "buildCommand": "npm run check:env && npm run check:deploy && npm run build",
+  "ignoreCommand": "node scripts/check-vercel-auto-deploy.mjs",
   "outputDirectory": "dist",
   "installCommand": "npm ci --include=dev",
   "functions": {

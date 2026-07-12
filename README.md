@@ -10,6 +10,7 @@
 - **应急降级：Netlify 静态展示包**。仅发布 `网页制作/dist-public`，不包含登录、订单、积分、后台或交易 API。
 - Vercel build 只做环境校验、部署配置校验与站点构建，绝不执行数据库 migration 或 seed。
 - 数据库 migration 只能通过受保护的生产发布工作流显式执行；生产环境永不运行开发 seed。
+- 两份 `vercel.json` 的 `ignoreCommand` 会跳过 Git 集成对 `main` 的自动 Production 构建；合并后必须由受保护工作流迁移、部署候选并 promote。
 
 ## 本地验证
 
@@ -39,11 +40,11 @@ Production 必须填写真实经营主体 `BUSINESS_NAME`，并将 `DATA_RESIDEN
 普通 PR 使用 Vercel Preview 和独立的 Neon 预览分支。预览验证通过后，从 GitHub Actions 手动运行 `Scent Atoll Production Release`：
 
 ```text
-Production 环境校验 -> migration -> production-target candidate
+外部平台审计 -> Production/Preview 隔离检查 -> migration -> Vercel 云端 candidate
 -> 页面/API/权限边界验证 -> promote -> 正式域名复验
 ```
 
-该工作流仅允许 `main` 分支、要求输入 `RELEASE`，并使用 GitHub `production` Environment 的审批和 secrets。发布当天步骤、必需 secrets、回滚和降级操作见 [launch-runbook.md](网页制作/plan/launch-runbook.md)。
+该工作流仅允许 `main` 分支、要求输入 `RELEASE`，并使用 GitHub `production` Environment 的审批和 secrets。Production 数据库连接由独立的 GitHub secret 注入迁移步骤，不通过 `vercel env pull` 回拉；Vercel Sensitive env 只在其云端构建和运行时使用。发布当天步骤、必需 secrets、回滚和降级操作见 [launch-runbook.md](网页制作/plan/launch-runbook.md)。
 
 静态降级包仍可单独生成：
 

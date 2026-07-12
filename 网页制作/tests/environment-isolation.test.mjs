@@ -62,17 +62,63 @@ describe("Production and Preview environment isolation", () => {
     assert.doesNotMatch(`${result.stdout}${result.stderr}`, /production-secret|preview-secret/);
   });
 
-  it("rejects shared database and Blob credentials without echoing their values", () => {
-    const sharedDatabase = "postgresql://shared-secret@shared-db.test/scent";
-    const sharedBlob = "blob_shared_secret";
+  it("rejects shared database and Blob resources without echoing their values", () => {
     const result = runCheck(
-      { DATABASE_URL: sharedDatabase, BLOB_READ_WRITE_TOKEN: sharedBlob },
-      { DATABASE_URL: sharedDatabase, BLOB_READ_WRITE_TOKEN: sharedBlob }
+      {
+        DATABASE_URL: "postgresql://production-secret@shared-db.test/scent?sslmode=require",
+        BLOB_READ_WRITE_TOKEN: "",
+        BLOB_STORE_ID: "store_shared_secret"
+      },
+      {
+        DATABASE_URL: "postgresql://preview-secret@shared-db.test/scent?sslmode=verify-full",
+        BLOB_READ_WRITE_TOKEN: "",
+        BLOB_STORE_ID: "store_shared_secret"
+      }
     );
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /DATABASE_URL must use different Production and Preview values/);
-    assert.match(result.stderr, /BLOB_READ_WRITE_TOKEN must use different Production and Preview values/);
-    assert.doesNotMatch(result.stderr, /shared-secret|blob_shared_secret/);
+    assert.match(result.stderr, /DATABASE_URL resource must identify different Production and Preview resources/);
+    assert.match(result.stderr, /Blob resource must identify different Production and Preview resources/);
+    assert.doesNotMatch(result.stderr, /production-secret|preview-secret|store_shared_secret/);
+  });
+
+  it("supports Marketplace Blob and Upstash variable names", () => {
+    const result = runCheck(
+      {
+        BLOB_READ_WRITE_TOKEN: "",
+        BLOB_STORE_ID: "store_production",
+        UPSTASH_REDIS_REST_URL: "",
+        UPSTASH_REDIS_REST_TOKEN: "",
+        UPSTASH_REDIS_KV_REST_API_URL: "https://production-redis.test",
+        UPSTASH_REDIS_KV_REST_API_TOKEN: "production-token"
+      },
+      {
+        BLOB_READ_WRITE_TOKEN: "",
+        BLOB_STORE_ID: "store_preview",
+        UPSTASH_REDIS_REST_URL: "",
+        UPSTASH_REDIS_REST_TOKEN: "",
+        UPSTASH_REDIS_KV_REST_API_URL: "https://preview-redis.test",
+        UPSTASH_REDIS_KV_REST_API_TOKEN: "preview-token"
+      }
+    );
+    assert.equal(result.status, 0, result.stderr);
+  });
+
+  it("rejects a shared Upstash resource even when tokens differ", () => {
+    const result = runCheck(
+      {
+        UPSTASH_REDIS_REST_URL: "",
+        UPSTASH_REDIS_KV_REST_API_URL: "https://shared-redis.test/",
+        UPSTASH_REDIS_KV_REST_API_TOKEN: "production-token"
+      },
+      {
+        UPSTASH_REDIS_REST_URL: "",
+        UPSTASH_REDIS_KV_REST_API_URL: "https://shared-redis.test",
+        UPSTASH_REDIS_KV_REST_API_TOKEN: "preview-token"
+      }
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Upstash Redis resource must identify different Production and Preview resources/);
+    assert.doesNotMatch(result.stderr, /production-token|preview-token/);
   });
 
   it("rejects a legacy payment webhook secret in either deployed environment", () => {

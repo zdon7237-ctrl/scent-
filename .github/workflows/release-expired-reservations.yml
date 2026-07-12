@@ -15,7 +15,6 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    environment: production
     env:
       PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
