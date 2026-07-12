@@ -130,6 +130,33 @@
 4. 在 Vercel Preview 完成桌面、手机和微信内置浏览器尺寸的订单到退款演练。
 5. 通过 `launch-readiness-checklist.md` 后再运行受保护的 Production release workflow。
 
+## 2026-07-12：商业 Preview 数据库与平台资源验收
+
+### 本次完成
+
+- Resend 发信域名 `scentatoll.com` 的 DKIM、SPF 与 MX 已全部验证，Preview / Production 已接入 Resend，发件人为 `馥屿 <noreply@scentatoll.com>`。
+- 已创建 Neon 独立分支 `preview-commercial-launch`（ID：`br-wild-star-ahtci304`），从 `main` 仅复制 schema、不复制用户数据，并关闭自动删除。
+- Vercel 的 `DATABASE_URL` 已仅在 Preview 环境覆盖为该独立 Neon 分支；Production 数据库未修改。
+- Preview 已显式执行 release migration，验证到 `003_commercial_transaction_hardening`；未运行开发 seed。
+- Preview 已执行一次性 commerce bootstrap，写入 6 个会员等级、5 个积分商城商品和 8 个商品，未创建管理员账号。
+- 重新部署的 Vercel Preview 为 `https://scent-307m2qe75-scent-atoll.vercel.app`，deployment ID 为 `dpl_hqEcp1nYQn91AFTdLdXJDii1ncRb`，状态为 Ready。
+
+### 验证记录
+
+- `/api/health/live` 返回 `ok`。
+- `/api/health/ready` 返回 `ready`、`database: postgres`、`products: 8`、`commerceFoundation: true`。
+- `/api/products` 可读取数据库商品；匿名 `/api/auth/me` 返回空用户，匿名管理端接口拒绝访问。
+- 已在 Preview 分支临时创建并清理 `scent_preview_test` 数据库，真实 PostgreSQL migration/seed 幂等 smoke test 与全量 `npm test` 均通过，不再跳过数据库 smoke。
+- `npm run launch:check`、部署配置检查和 `git diff --check` 通过；静态应急包仍提示历史占位域名与客服资料，不能作为正式交易站发布。
+- Preview 不包含 owner；后续浏览器业务验收如需后台操作，应使用一次性 Preview owner 初始化，不得把开发默认管理员写入常驻环境变量。
+
+### 尚未完成
+
+- 尚未执行真实 PostgreSQL 并发库存争抢、重复核款/退款/确认收货、积分兑换和 Session 安全测试。
+- 尚未完成桌面、手机及微信内置浏览器尺寸下的注册、下单、人工收款、发货、确认收货和退款全流程。
+- Blob、Upstash 与 Resend 当前仍由 Preview / Production 共享资源，尚未达到完全隔离门禁。
+- Production migration、备份恢复演练、正式 owner 初始化和正式域名全流程验收尚未执行；本次不合并 PR、不 Promote Production。
+
 ## 历史记录入口
 
 - `backend-dev-notes.md`：本地后端运行、数据库模式和开发账号备忘。
