@@ -22,3 +22,5 @@ node_modules/
 网页制作/.env.*
 !网页制作/.env.*.example
 网页制作/.vercel/
+.vercel
+.env*

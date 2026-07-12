@@ -201,7 +201,7 @@ describe("product image storage", () => {
     assert.throws(
       () => createProductImageStorage({ env: { DEPLOYMENT_ENV: "production" } }),
       (error) => error instanceof ServiceConfigurationError
-        && error.missing.includes("BLOB_READ_WRITE_TOKEN")
+        && error.missing.includes("BLOB_READ_WRITE_TOKEN or VERCEL_OIDC_TOKEN + BLOB_STORE_ID")
     );
   });
 

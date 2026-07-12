@@ -137,20 +137,23 @@ async function defaultBlobLoader() {
 export function createProductImageStorage(options = {}) {
   const env = options.env || process.env;
   const token = options.token ?? envString(env, "BLOB_READ_WRITE_TOKEN");
+  const oidcToken = options.oidcToken ?? envString(env, "VERCEL_OIDC_TOKEN");
+  const storeId = options.storeId ?? envString(env, "BLOB_STORE_ID");
+  const hasCredentials = Boolean(token || (oidcToken && storeId));
   const production = isProductionEnvironment(env);
   const logger = options.logger || createLogger({ env, service: "scent-atoll-product-images" });
   const loadBlob = options.loadBlob || defaultBlobLoader;
   const maxBytes = options.maxBytes || defaultMaxBytes;
   const idGenerator = options.idGenerator || randomUUID;
 
-  if (production && !token) {
-    throw new ServiceConfigurationError("product-image-storage", ["BLOB_READ_WRITE_TOKEN"]);
+  if (production && !hasCredentials) {
+    throw new ServiceConfigurationError("product-image-storage", ["BLOB_READ_WRITE_TOKEN or VERCEL_OIDC_TOKEN + BLOB_STORE_ID"]);
   }
 
   let blobPromise;
   async function provider() {
-    if (!token) {
-      throw new ServiceConfigurationError("product-image-storage", ["BLOB_READ_WRITE_TOKEN"]);
+    if (!hasCredentials) {
+      throw new ServiceConfigurationError("product-image-storage", ["BLOB_READ_WRITE_TOKEN or VERCEL_OIDC_TOKEN + BLOB_STORE_ID"]);
     }
     if (!blobPromise) blobPromise = Promise.resolve().then(() => loadBlob());
     let blob;
@@ -185,7 +188,8 @@ export function createProductImageStorage(options = {}) {
         result = await blob.put(pathname, body, {
           access: "public",
           addRandomSuffix: false,
-          token
+          ...(token ? { token } : {}),
+          ...(!token && storeId ? { storeId } : {})
         });
       } catch (error) {
         logger.error("product_image.upload_failed", { pathname, error });
@@ -205,7 +209,10 @@ export function createProductImageStorage(options = {}) {
       const safeUrl = validateProductImageBlobUrl(url);
       const blob = await provider();
       try {
-        await blob.del(safeUrl, { token });
+        await blob.del(safeUrl, {
+          ...(token ? { token } : {}),
+          ...(!token && storeId ? { storeId } : {})
+        });
       } catch (error) {
         logger.error("product_image.delete_failed", { url: safeUrl, error });
         throw new ProductImageStorageError("Failed to delete product image.", "BLOB_DELETE_FAILED", { cause: error });

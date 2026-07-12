@@ -191,8 +191,8 @@ describe("launch environment check", () => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /DATABASE_URL is required for production deployments/);
     assert.match(result.stderr, /RESEND_API_KEY is required for production deployments/);
-    assert.match(result.stderr, /BLOB_READ_WRITE_TOKEN is required for production deployments/);
-    assert.match(result.stderr, /UPSTASH_REDIS_REST_URL is required for production deployments/);
+    assert.match(result.stderr, /BLOB_READ_WRITE_TOKEN or VERCEL_OIDC_TOKEN \+ BLOB_STORE_ID is required for production deployments/);
+    assert.match(result.stderr, /UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_KV_REST_API_URL is required for production deployments/);
     assert.match(result.stderr, /CRON_SECRET is required for production deployments/);
   });
 

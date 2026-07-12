@@ -18,9 +18,6 @@ const commercialRuntimeEnv = [
   "APP_ORIGIN",
   "RESEND_API_KEY",
   "EMAIL_FROM",
-  "BLOB_READ_WRITE_TOKEN",
-  "UPSTASH_REDIS_REST_URL",
-  "UPSTASH_REDIS_REST_TOKEN",
   "CRON_SECRET"
 ];
 
@@ -45,6 +42,14 @@ const warnings = [];
 
 function value(name) {
   return String(process.env[name] || "").trim();
+}
+
+function firstValue(...names) {
+  for (const name of names) {
+    const current = value(name);
+    if (current) return current;
+  }
+  return "";
 }
 
 function hasPlaceholder(text) {
@@ -157,9 +162,18 @@ if (["production", "preview"].includes(commercialEnvironment)) {
     failures.push("APP_ORIGIN must equal SITE_URL in production.");
   }
 
-  const redisUrl = value("UPSTASH_REDIS_REST_URL");
+  const blobToken = value("BLOB_READ_WRITE_TOKEN");
+  const blobOidcReady = Boolean(value("VERCEL_OIDC_TOKEN") && value("BLOB_STORE_ID"));
+  if (!blobToken && !blobOidcReady) {
+    failures.push(`BLOB_READ_WRITE_TOKEN or VERCEL_OIDC_TOKEN + BLOB_STORE_ID is required for ${commercialEnvironment} deployments.`);
+  }
+
+  const redisUrl = firstValue("UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_KV_REST_API_URL");
+  const redisToken = firstValue("UPSTASH_REDIS_REST_TOKEN", "UPSTASH_REDIS_KV_REST_API_TOKEN");
+  if (!redisUrl) failures.push(`UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_KV_REST_API_URL is required for ${commercialEnvironment} deployments.`);
+  if (!redisToken) failures.push(`UPSTASH_REDIS_REST_TOKEN or UPSTASH_REDIS_KV_REST_API_TOKEN is required for ${commercialEnvironment} deployments.`);
   if (redisUrl && !isHttpsUrl(redisUrl)) {
-    failures.push("UPSTASH_REDIS_REST_URL must be an https:// URL.");
+    failures.push("The Upstash REST URL must be an https:// URL.");
   }
 
   const cronSecret = value("CRON_SECRET");

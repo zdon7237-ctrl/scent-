@@ -133,8 +133,10 @@ function createUpstashStore({ url, token, fetchImpl }) {
 
 export function createLoginRateLimiter(options = {}) {
   const env = options.env || process.env;
-  const urlValue = options.upstashUrl ?? envString(env, "UPSTASH_REDIS_REST_URL");
-  const token = options.upstashToken ?? envString(env, "UPSTASH_REDIS_REST_TOKEN");
+  const urlValue = options.upstashUrl
+    ?? (envString(env, "UPSTASH_REDIS_REST_URL") || envString(env, "UPSTASH_REDIS_KV_REST_API_URL"));
+  const token = options.upstashToken
+    ?? (envString(env, "UPSTASH_REDIS_REST_TOKEN") || envString(env, "UPSTASH_REDIS_KV_REST_API_TOKEN"));
   const hasUrl = Boolean(urlValue);
   const hasToken = Boolean(token);
   const production = isProductionEnvironment(env);
