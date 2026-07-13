@@ -21,6 +21,7 @@ import {
   redactSensitive
 } from "../server/src/services/observability.mjs";
 import { ServiceConfigurationError } from "../server/src/services/runtime-config.mjs";
+import { serializePostgresValue } from "../server/src/repository.mjs";
 
 function captureLogger() {
   const events = [];
@@ -38,6 +39,15 @@ function pngBytes(size = 32) {
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes);
   return bytes;
 }
+
+describe("PostgreSQL JSONB serialization", () => {
+  it("serializes arrays and objects for JSONB columns without changing ordinary columns", () => {
+    assert.equal(serializePostgresValue("notes", ["木质", "花香"]), '["木质","花香"]');
+    assert.equal(serializePostgresValue("after_data", { alt: "馥屿 商品图" }), '{"alt":"馥屿 商品图"}');
+    assert.equal(serializePostgresValue("image_url", "https://example.com/image.png"), "https://example.com/image.png");
+    assert.equal(serializePostgresValue("raw_payload", null), null);
+  });
+});
 
 describe("email service", () => {
   it("builds deterministic keys without exposing stable business identifiers", () => {

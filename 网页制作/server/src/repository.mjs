@@ -39,6 +39,25 @@ function numeric(value) {
   return value === null || value === undefined ? value : Number(value);
 }
 
+const jsonbColumns = new Set([
+  "notes",
+  "scenes",
+  "mood",
+  "status_tags",
+  "product_snapshot",
+  "raw_payload",
+  "payload",
+  "item_snapshot",
+  "before_data",
+  "after_data",
+  "response_body"
+]);
+
+export function serializePostgresValue(column, value) {
+  if (value === null || value === undefined || !jsonbColumns.has(column)) return value;
+  return JSON.stringify(value);
+}
+
 const specs = [
   {
     key: "memberTiers",
@@ -686,7 +705,9 @@ function fromRow(spec, row) {
 }
 
 function toRow(spec, item) {
-  return Object.entries(spec.columns).map(([jsonKey]) => item?.[jsonKey] ?? null);
+  return Object.entries(spec.columns).map(([jsonKey, sqlKey]) => (
+    serializePostgresValue(sqlKey, item?.[jsonKey] ?? null)
+  ));
 }
 
 export class JsonRepository {
