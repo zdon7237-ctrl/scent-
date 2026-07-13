@@ -2,8 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createLogger } from "./observability.mjs";
 import {
   ServiceConfigurationError,
-  envString,
-  isProductionEnvironment
+  envString
 } from "./runtime-config.mjs";
 
 const defaultMaxBytes = 5 * 1024 * 1024;
@@ -140,15 +139,10 @@ export function createProductImageStorage(options = {}) {
   const oidcToken = options.oidcToken ?? envString(env, "VERCEL_OIDC_TOKEN");
   const storeId = options.storeId ?? envString(env, "BLOB_STORE_ID");
   const hasCredentials = Boolean(token || (oidcToken && storeId));
-  const production = isProductionEnvironment(env);
   const logger = options.logger || createLogger({ env, service: "scent-atoll-product-images" });
   const loadBlob = options.loadBlob || defaultBlobLoader;
   const maxBytes = options.maxBytes || defaultMaxBytes;
   const idGenerator = options.idGenerator || randomUUID;
-
-  if (production && !hasCredentials) {
-    throw new ServiceConfigurationError("product-image-storage", ["BLOB_READ_WRITE_TOKEN or VERCEL_OIDC_TOKEN + BLOB_STORE_ID"]);
-  }
 
   let blobPromise;
   async function provider() {
