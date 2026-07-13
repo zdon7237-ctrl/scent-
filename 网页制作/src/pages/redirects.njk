@@ -3,6 +3,8 @@ permalink: _redirects
 eleventyExcludeFromCollections: true
 ---
 {% if site.isPublicBuild %}
+/product-*.html /products/:splat 301!
+/products/* /product.html?id=:splat 200
 /admin.html /404.html 404
 /account.html /404.html 404
 /login.html /404.html 404
@@ -10,6 +12,8 @@ eleventyExcludeFromCollections: true
 /member.html /404.html 404
 /membership.html /404.html 404
 /checkout.html /404.html 404
+/verify-email.html /404.html 404
+/reset-password.html /404.html 404
 /orders.html /404.html 404
 /points.html /404.html 404
 /points-mall.html /404.html 404

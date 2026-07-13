@@ -53,3 +53,6 @@ jobs:
           CONTACT_WECHAT: ScentAtoll
           BUSINESS_NAME: Scent Atoll Studio Ltd
           STUDIO_BOOKING: Wechat appointment
+
+      - name: Verify commercial Vercel deployment contract
+        run: npm run check:deploy

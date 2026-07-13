@@ -1,5 +1,7 @@
 # 馥屿上线准备完成度审计
 
+> 历史记录（展示版）：本文审计的是早期 `dist-public/` public-only 方案，不再定义当前主生产架构。当前商业版以 `launch-readiness-checklist.md` 和 `launch-runbook.md` 为准：Vercel 发布完整 `dist/` + API，`dist-public/` 仅作应急只读降级。
+
 更新日期：2026-05-12
 
 ## 目标复述

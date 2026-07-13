@@ -1,0 +1,128 @@
+name: Scent Atoll Production Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type RELEASE to run the production migration and promotion workflow
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scent-atoll-production-release
+  cancel-in-progress: false
+
+jobs:
+  migrate-verify-promote:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      RELEASE_CONFIRMATION: ${{ inputs.confirmation }}
+      PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+      VERCEL_ENV: production
+
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: 网页制作/.nvmrc
+          cache: npm
+          cache-dependency-path: 网页制作/package-lock.json
+
+      - name: Install application dependencies
+        working-directory: 网页制作
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@55.0.0
+
+      - name: Validate protected release credentials and target
+        working-directory: 网页制作
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          GITHUB_RELEASE_AUDIT_TOKEN: ${{ secrets.GITHUB_RELEASE_AUDIT_TOKEN }}
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: node scripts/check-release-controls.mjs
+
+      - name: Audit GitHub and Vercel release settings
+        working-directory: 网页制作
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          GITHUB_RELEASE_AUDIT_TOKEN: ${{ secrets.GITHUB_RELEASE_AUDIT_TOKEN }}
+        run: node scripts/check-platform-release-settings.mjs
+
+      - name: Verify Production and Preview resource isolation
+        working-directory: 网页制作
+        env:
+          ISOLATION_PRODUCTION_DEPLOYMENT_ENV: production
+          ISOLATION_PRODUCTION_SITE_URL: ${{ vars.PRODUCTION_URL }}
+          ISOLATION_PRODUCTION_APP_ORIGIN: ${{ vars.PRODUCTION_URL }}
+          ISOLATION_PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          ISOLATION_PRODUCTION_RESEND_RESOURCE_ID: ${{ vars.PRODUCTION_RESEND_RESOURCE_ID }}
+          ISOLATION_PRODUCTION_EMAIL_FROM: ${{ vars.PRODUCTION_EMAIL_FROM }}
+          ISOLATION_PRODUCTION_BLOB_STORE_ID: ${{ vars.PRODUCTION_BLOB_STORE_ID }}
+          ISOLATION_PRODUCTION_UPSTASH_REDIS_KV_REST_API_URL: ${{ vars.PRODUCTION_UPSTASH_REDIS_REST_URL }}
+          ISOLATION_PRODUCTION_CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ISOLATION_PREVIEW_DEPLOYMENT_ENV: preview
+          ISOLATION_PREVIEW_SITE_URL: ${{ vars.PREVIEW_URL }}
+          ISOLATION_PREVIEW_APP_ORIGIN: ${{ vars.PREVIEW_URL }}
+          ISOLATION_PREVIEW_DATABASE_URL: ${{ secrets.PREVIEW_DATABASE_URL }}
+          ISOLATION_PREVIEW_RESEND_RESOURCE_ID: ${{ vars.PREVIEW_RESEND_RESOURCE_ID }}
+          ISOLATION_PREVIEW_EMAIL_FROM: ${{ vars.PREVIEW_EMAIL_FROM }}
+          ISOLATION_PREVIEW_BLOB_STORE_ID: ${{ vars.PREVIEW_BLOB_STORE_ID }}
+          ISOLATION_PREVIEW_UPSTASH_REDIS_KV_REST_API_URL: ${{ vars.PREVIEW_UPSTASH_REDIS_REST_URL }}
+          ISOLATION_PREVIEW_CRON_SECRET: ${{ secrets.PREVIEW_CRON_SECRET }}
+        run: node scripts/check-environment-isolation.mjs --prefixed-env
+
+      - name: Apply and verify production migration
+        working-directory: 网页制作
+        env:
+          DEPLOYMENT_ENV: production
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          ALLOW_RELEASE_MIGRATION: production
+        run: node scripts/release-migrate.mjs
+
+      - name: Link the Vercel project without downloading Sensitive environment values
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          mkdir -p .vercel
+          node -e 'require("node:fs").writeFileSync(".vercel/project.json", JSON.stringify({ orgId: process.env.VERCEL_ORG_ID, projectId: process.env.VERCEL_PROJECT_ID }))'
+
+      - name: Deploy candidate without assigning the production domain
+        id: candidate
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          candidate_url="$(vercel deploy --yes --prod --skip-domain --token="$VERCEL_TOKEN" --build-env SCENT_ATOLL_CONTROLLED_RELEASE=1)"
+          echo "url=$candidate_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify candidate pages, API, database access, and auth boundary
+        working-directory: 网页制作
+        env:
+          DEPLOYMENT_URL: ${{ steps.candidate.outputs.url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node scripts/check-commercial-deployment.mjs
+
+      - name: Promote the verified candidate
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel promote "${{ steps.candidate.outputs.url }}" --yes --token="$VERCEL_TOKEN"
+
+      - name: Verify the production alias
+        working-directory: 网页制作
+        env:
+          DEPLOYMENT_URL: ${{ env.PRODUCTION_URL }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node scripts/check-commercial-deployment.mjs

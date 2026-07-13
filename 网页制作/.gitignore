@@ -14,5 +14,7 @@ assets/js/admin-client.js
 assets/js/public-app.js
 src/assets/og-image.png
 server/data/db.json
-.env.production
-.env*.local
+.env
+.env.*
+!.env.*.example
+.vercel/

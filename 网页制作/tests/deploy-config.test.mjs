@@ -14,10 +14,18 @@ const filesToCopy = [
   "netlify.toml",
   "vercel.json",
   ".github/workflows/scent-atoll-ci.yml",
+  ".github/workflows/scent-atoll-release.yml",
+  ".github/workflows/release-expired-reservations.yml",
   "网页制作/.nvmrc",
   "网页制作/package.json",
   "网页制作/netlify.toml",
-  "网页制作/vercel.json"
+  "网页制作/vercel.json",
+  "网页制作/scripts/release-migrate.mjs",
+  "网页制作/scripts/check-commercial-deployment.mjs",
+  "网页制作/scripts/check-environment-isolation.mjs",
+  "网页制作/scripts/check-release-controls.mjs",
+  "网页制作/scripts/check-platform-release-settings.mjs",
+  "网页制作/scripts/check-vercel-auto-deploy.mjs"
 ];
 
 function copyTextFixture(tempRepo, filePath) {
@@ -99,5 +107,123 @@ describe("deployment config check", () => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /网页制作\/netlify\.toml should not run npm run launch:ready/);
     assert.match(result.stderr, /网页制作\/vercel\.json buildCommand should not run npm run launch:ready/);
+  }));
+
+  it("rejects Vercel builds that mutate or seed a database", () => withFixture((fixture) => {
+    mutateJson(path.join(fixture.repoRoot, "vercel.json"), (vercel) => {
+      vercel.buildCommand = "cd 网页制作 && npm run check:env && npm run db:migrate && npm run db:seed && npm run build";
+    });
+
+    const result = runCheck(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /buildCommand must not run db:migrate/);
+    assert.match(result.stderr, /buildCommand must not run db:seed/);
+  }));
+
+  it("rejects Vercel configs that allow automatic main Production builds", () => withFixture((fixture) => {
+    mutateJson(path.join(fixture.repoRoot, "vercel.json"), (vercel) => {
+      delete vercel.ignoreCommand;
+    });
+
+    const result = runCheck(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /ignoreCommand should be node 网页制作\/scripts\/check-vercel-auto-deploy\.mjs/);
+  }));
+
+  it("rejects Vercel configs without the stable product slug rewrite", () => withFixture((fixture) => {
+    for (const filePath of [
+      path.join(fixture.repoRoot, "vercel.json"),
+      path.join(fixture.projectRoot, "vercel.json")
+    ]) {
+      mutateJson(filePath, (vercel) => {
+        vercel.rewrites = vercel.rewrites.filter((rewrite) => rewrite.source !== "/products/:slug");
+      });
+    }
+
+    const result = runCheck(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /should rewrite \/products\/:slug to \/api\/product-page\?slug=:slug/);
+  }));
+
+  it("rejects Vercel configs without the database sitemap", () => withFixture((fixture) => {
+    for (const filePath of [
+      path.join(fixture.repoRoot, "vercel.json"),
+      path.join(fixture.projectRoot, "vercel.json")
+    ]) {
+      mutateJson(filePath, (vercel) => {
+        vercel.rewrites = vercel.rewrites.filter((rewrite) => rewrite.source !== "/sitemap.xml");
+      });
+    }
+
+    const result = runCheck(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /should rewrite \/sitemap\.xml to \/api\/sitemap/);
+  }));
+
+  it("rejects missing SSR files and the legacy product redirect", () => withFixture((fixture) => {
+    mutateJson(path.join(fixture.repoRoot, "vercel.json"), (vercel) => {
+      vercel.functions["api/product-page.mjs"].includeFiles = ["网页制作/src/assets/data.js"];
+      vercel.redirects = [];
+    });
+
+    const result = runCheck(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /includeFiles should include 网页制作\/dist\/product\.html/);
+    assert.match(result.stderr, /should permanently redirect \/product-:slug\.html to \/products\/:slug/);
+  }));
+
+  it("rejects a release workflow that seeds production", () => withFixture((fixture) => {
+    const workflowPath = path.join(fixture.repoRoot, ".github/workflows/scent-atoll-release.yml");
+    const workflow = readFileSync(workflowPath, "utf8").replace(
+      "scripts/release-migrate.mjs",
+      "scripts/release-migrate.mjs && npm run db:seed"
+    );
+    writeFileSync(workflowPath, workflow);
+
+    const result = runCheck(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must not seed a release database/);
+  }));
+
+  it("rejects promotion before candidate verification", () => withFixture((fixture) => {
+    const workflowPath = path.join(fixture.repoRoot, ".github/workflows/scent-atoll-release.yml");
+    const workflow = readFileSync(workflowPath, "utf8").replace(
+      "vercel promote \"${{ steps.candidate.outputs.url }}\"",
+      "node scripts/check-commercial-deployment.mjs && vercel promote \"${{ steps.candidate.outputs.url }}\""
+    );
+    writeFileSync(workflowPath, workflow.replace(
+      "run: node scripts/check-commercial-deployment.mjs",
+      "run: vercel promote premature"
+    ));
+
+    const result = runCheck(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /migration, candidate deploy, verification, then promotion/);
+  }));
+
+  it("rejects a release workflow that pulls Sensitive Vercel environment values", () => withFixture((fixture) => {
+    const workflowPath = path.join(fixture.repoRoot, ".github/workflows/scent-atoll-release.yml");
+    const workflow = readFileSync(workflowPath, "utf8").replace(
+      "node scripts/check-release-controls.mjs",
+      "node scripts/check-release-controls.mjs && vercel env pull /tmp/production.env"
+    );
+    writeFileSync(workflowPath, workflow);
+
+    const result = runCheck(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must not use vercel env pull/);
+  }));
+
+  it("rejects scheduled reservation cleanup behind production release approval", () => withFixture((fixture) => {
+    const workflowPath = path.join(fixture.repoRoot, ".github/workflows/release-expired-reservations.yml");
+    const workflow = readFileSync(workflowPath, "utf8").replace(
+      "runs-on: ubuntu-latest",
+      "runs-on: ubuntu-latest\n    environment: production"
+    );
+    writeFileSync(workflowPath, workflow);
+
+    const result = runCheck(fixture);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must not use the reviewer-protected production Environment/);
   }));
 });

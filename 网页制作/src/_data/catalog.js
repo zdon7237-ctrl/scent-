@@ -38,7 +38,7 @@ module.exports = {
     pagePath: entryPage("article", item.id)
   })),
   sitemapProducts: (catalog.products || []).map((item) => ({
-    path: entryPage("product", item.id)
+    path: `products/${encodedId(item.slug || item.id)}`
   })),
   sitemapBrands: (catalog.brands || []).map((item) => ({
     path: entryPage("brand", item.id)

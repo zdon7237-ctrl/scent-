@@ -44,6 +44,8 @@ const forbiddenFiles = [
   "member.html",
   "membership.html",
   "checkout.html",
+  "verify-email.html",
+  "reset-password.html",
   "orders.html",
   "points.html",
   "points-mall.html",
@@ -56,7 +58,7 @@ const forbiddenFiles = [
 ];
 
 const forbiddenPathPatterns = [
-  /^(?:admin|account|login|register|member|membership|checkout|orders|points)(?:[-.]|$)/,
+  /^(?:admin|account|login|register|member|membership|checkout|verify-email|reset-password|orders|points)(?:[-.]|$)/,
   /^assets\/js\//
 ];
 
@@ -68,6 +70,8 @@ const privateHtmlFiles = [
   "member.html",
   "membership.html",
   "checkout.html",
+  "verify-email.html",
+  "reset-password.html",
   "orders.html",
   "points.html",
   "points-mall.html",
@@ -104,7 +108,6 @@ const forbiddenPatterns = [
   /dev-admin/i,
   /startCheckout/,
   /quoteCheckout/,
-  /提交订单/,
   /前往结账/,
   /加入购物车/
 ];
@@ -143,6 +146,8 @@ const expectedNoindexHeaderRules = [
 ];
 
 const expectedRedirectRules = [
+  "/product-*.html /products/:splat 301!",
+  "/products/* /product.html?id=:splat 200",
   ...privateHtmlFiles.map((file) => `/${file} /404.html 404`),
   "/* /404.html 404"
 ];
@@ -404,9 +409,11 @@ if (!await exists(".")) {
   if (publicFileSet.has("sitemap.xml")) {
     const sitemapText = await readFile(path.join(outputPath, "sitemap.xml"), "utf8");
     for (const file of [...sitemapPublicFiles, ...catalogPublicFiles]) {
-      const expectedPath = file ? `/${file}` : "/";
+      const productMatch = file.match(/^product-(.+)\.html$/);
+      const expectedPath = productMatch ? `/products/${productMatch[1]}` : (file ? `/${file}` : "/");
       if (!sitemapText.includes(expectedPath)) failures.push(`Missing ${expectedPath} from sitemap.xml`);
     }
+    if (/\/product-[^<]+\.html/.test(sitemapText)) failures.push("Legacy product detail URL found in sitemap.xml");
     for (const file of privateHtmlFiles) {
       if (sitemapText.includes(`/${file}`)) failures.push(`Private page ${file} found in sitemap.xml`);
     }

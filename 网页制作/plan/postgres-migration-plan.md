@@ -1,6 +1,6 @@
 # PostgreSQL 迁移计划
 
-更新日期：2026-05-06
+更新日期：2026-07-10
 
 ## 目标
 
@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-- 未设置 `DATABASE_URL` 时，默认运行和 `npm test` 仍使用 JSON fallback。
+- 未设置 `DATABASE_URL` 时，本地开发和默认单元测试仍可使用 JSON；Production / Preview 部署必须设置 PostgreSQL，生产不得 fallback。
 - 设置 `DATABASE_URL` 后，主业务 API 通过 repository 读写 PostgreSQL。
 - 设置 `DATABASE_URL` 后可运行 PostgreSQL migration 和 seed。
 - 已新增 `server/src/db.mjs`、`server/src/migrate.mjs`、`server/src/seed.mjs`、`server/src/repository.mjs`。
@@ -94,7 +94,15 @@ seed 可重复执行，内容包括：
 - 本地 seed 管理员。
 - 最小商品数据，包含 `vespree`。
 
-生产环境不能使用默认 `dev-admin`。生产环境必须显式设置安全的 `SEED_ADMIN_PASSWORD`，或后续改成正式管理员创建流程。
+生产环境不能运行 seed，也不能设置 `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`。初始 owner 使用一次性 bootstrap 流程创建；seed 仅用于本地或可丢弃的测试数据库。
+
+## 发布迁移规则
+
+- Vercel build command 不执行 migration 或 seed。
+- Preview 先对对应 Neon branch 运行 `ALLOW_RELEASE_MIGRATION=preview node scripts/release-migrate.mjs`，再部署并验证 Preview。
+- Production 由受保护 GitHub workflow 运行 `ALLOW_RELEASE_MIGRATION=production node scripts/release-migrate.mjs`，然后部署 production-target candidate；候选检查通过后才 promote。
+- migration 必须向后兼容上一应用版本。应用 rollback 不自动回滚 schema；破坏性变更使用 expand/migrate/contract 多次发布。
+- 每次生产 migration 前确认 Neon 备份/时间点恢复可用，并记录 migration ID。
 
 ## Repository 切换状态
 

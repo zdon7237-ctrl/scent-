@@ -1,106 +1,73 @@
-# 馥屿 Scent Atoll 上线入口
+# 馥屿 Scent Atoll 应用
 
-这个目录是实际项目根目录。正式公开版本是：
+此目录是应用根目录，包含完整 storefront、会员、订单、积分、运营后台和 Node API。
 
-```text
-品牌展示 + 香水浏览 + 试香咨询 + 人工购买确认
-```
+最新开发进度、验证结果和剩余风险见 [plan/project-log.md](plan/project-log.md)。本地后端运行说明见 [backend-dev-notes.md](backend-dev-notes.md)。
 
-香水商品内容和图片由店主最后替换；真实在线支付、会员积分正式运营和后台管理不部署到公开站。
-
-## 必跑检查
+## 本地运行与检查
 
 ```bash
 nvm use
 npm ci
-npm run launch:preflight
+npm test
+npm run build
+npm run check:deploy
 ```
 
-`launch:preflight` 会运行测试、普通构建和 public-only 发布包检查。
-
-## 正式发布包
-
-只部署：
-
-```text
-dist-public/
-```
-
-不要部署 `dist/`，它保留本地开发用的后台、会员、订单和积分页面。
-
-## 上线必填变量
-
-正式部署前必须在部署平台填入：
-
-```text
-SITE_URL=
-CONTACT_EMAIL=
-CONTACT_WECHAT=
-```
-
-可选：
-
-```text
-BUSINESS_NAME=馥屿 Scent Atoll
-STUDIO_BOOKING=通过客服微信预约
-CUSTOMER_HOURS=12:00 - 20:00
-OG_IMAGE=
-```
-
-`OG_IMAGE` 不设置时，会使用站内生成的 `/og-image.png`。
-`BUSINESS_NAME` 不设置时，会使用已确认的店名 `馥屿 Scent Atoll`；如有正式经营主体名称，可以填写它覆盖默认值。
-`STUDIO_BOOKING` 不设置时，会使用 `通过客服微信预约`；如有正式预约表单、小红书私信或其他方式，可以填写它覆盖默认值。
-`SITE_URL` 必须是正式 `https://` 域名根地址，不要带末尾 `/`、路径、查询参数或 `#`，例如 `https://www.example.com`。
-
-## 严格上线门禁
-
-填完真实变量后运行：
+完整构建输出到 `dist/`。本地启动 API 与页面：
 
 ```bash
-npm run launch:status
-npm run check:env
+npm start
+```
+
+## 商业生产部署
+
+Vercel 是唯一主生产平台：
+
+- `vercel.json` 输出 `dist/` 并保留 `/api/*` Function rewrite。
+- 平台 build command 只运行 `check:env`、`check:deploy` 和 `build`。
+- build 不连接数据库执行 migration，也不 seed 任何管理员或业务数据。
+- Production 缺少 PostgreSQL、Resend、Blob、Upstash 或应用源地址时，`check:env` 会使构建失败；部署环境若配置开发支付 webhook 密钥也会失败。
+
+Production 与 Preview 环境清单分别见 `.env.production.example` 和 `.env.preview.example`。Preview 必须使用独立 Neon 分支、Blob Store、Upstash endpoint 和 Resend 测试资源，不得复制 Production 凭据。
+
+Production 还必须填写真实 `BUSINESS_NAME` 和 `DATA_RESIDENCY_DECISION`。后者只接受 `cross_border_approved` 或 `domestic_infrastructure`；跨境评估仍未完成时，生产构建会被阻止。
+
+全新的 Production 数据库只初始化一次，顺序是 migration、commerce bootstrap、owner bootstrap。连接串和一次性 owner 密码只通过当前 shell 或受保护的 secret 注入，不写入仓库、命令脚本或 Vercel 常驻环境。完整命令、安全清理和失败处理只在 [plan/launch-runbook.md](plan/launch-runbook.md) 维护，避免多份流程漂移。
+
+日常发布只执行 release migration，不得运行 `db:seed`、`db:bootstrap-commerce` 或 `db:bootstrap-owner`。
+
+## 正式发布门禁
+
+持续集成运行：
+
+```bash
+npm run launch:preflight
+npm run launch:strict
+npm run check:deploy
+```
+
+正式发布由根目录 `.github/workflows/scent-atoll-release.yml` 手动触发。它按固定顺序执行：
+
+1. 只读检查 GitHub reviewer/分支保护、Vercel Node 22 与商业套餐。
+2. 按资源 ID/地址检查 Production 与 Preview 数据库、Blob、Upstash、Resend 隔离。
+3. 从 GitHub `PRODUCTION_DATABASE_URL` 注入连接，显式运行 migration。
+4. 由 Vercel 云端读取 Sensitive env 构建 production candidate，并用 `--skip-domain` 部署。
+5. 检查首页、登录、后台页面、商品 API、匿名会员会话与匿名后台拒绝。
+6. 验证通过后 `vercel promote`，随后复验正式域名。
+
+Vercel Git 集成会继续生成 PR Preview，但 `ignoreCommand` 会跳过 `main` 的自动 Production 构建，避免新代码先于 migration 到达正式域名。工作流不执行 `vercel env pull`；Vercel Sensitive env 无需、也不应被回拉到 GitHub runner。
+
+失败时不得手工跳过验证直接 promote。具体审批、secrets、回滚与数据库恢复流程见 [plan/launch-runbook.md](plan/launch-runbook.md)。
+
+## 静态应急降级
+
+`dist-public/` 仅用于暂停动态功能后的只读展示降级：
+
+```bash
 npm run launch:strict
 ```
 
-`launch:status` 是只读状态检查，不构建、不部署、不联网；它会告诉你当前还卡在运营变量、Git 发布交接还是补丁空白。
+根目录和本目录的 Netlify 配置继续发布该目录。降级包不包含登录、会员、订单、积分、后台或 API，不得当作完整商业版部署。
 
-部署平台的 Netlify / Vercel 配置也已使用 `npm run launch:strict` 作为 build command。缺少真实运营信息或仍使用占位值时，构建会失败。
-
-如果本次上线改动已经提交并推送，可以在本地运行最终组合门禁：
-
-```bash
-npm run launch:ready
-```
-
-它会依次运行 Git 发布检查、整个仓库的补丁空白检查、测试 / 普通构建 / 公开包检查和严格上线门禁。平台构建仍然使用 `npm run launch:strict`。
-
-当前仍需处理的上线阻塞见 [plan/README.md](plan/README.md) 的“当前阻塞”表。
-
-## GitHub 部署前
-
-如果部署平台从 GitHub 拉取代码，先确认上线相关改动已经提交并推送到目标分支：
-
-```bash
-npm run check:git-release
-git diff --check -- :/
-```
-
-不要提交 `.env.production`、`dist/` 或 `dist-public/`；平台会用环境变量和 `npm run launch:strict` 重新生成正式发布包。
-`网页制作/plan/` 下仍保留的计划文档也属于发布交接范围，旧方案删除和保留计划更新都应随上线关键文件一起提交。
-
-## 部署后检查
-
-绑定正式域名后运行：
-
-```bash
-SITE_URL=https://你的正式域名 CONTACT_EMAIL=你的客服邮箱 CONTACT_WECHAT=你的客服微信 npm run check:live
-```
-
-也可以带上可选 `BUSINESS_NAME`、可选 `STUDIO_BOOKING`、可选 `CUSTOMER_HOURS` 和可选 `OG_IMAGE`，线上检查会确认这些值已经出现在公开页面中，并确认分享图元数据正确。
-
-## 相关文档
-
-- `plan/launch-env-intake.md`：上线变量收集表。
-- `plan/launch-readiness-checklist.md`：上线前检查清单。
-- `plan/launch-runbook.md`：发布当天操作顺序。
-- `plan/launch-completion-audit.md`：当前完成度和剩余阻塞。
+不要提交 `.env.production`、`.env.*.local`、`dist/`、`dist-public/` 或本地数据库文件。

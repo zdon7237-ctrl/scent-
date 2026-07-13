@@ -1,7 +1,23 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { hasDatabaseUrl, withPgClient, withPgTransaction } from "./db.mjs";
+
+const jsonMutationQueues = new Map();
+
+async function serializeJsonMutation(dataFile, callback) {
+  const key = path.resolve(dataFile);
+  const previous = jsonMutationQueues.get(key) || Promise.resolve();
+  const current = previous.catch(() => {}).then(callback);
+  const settled = current.catch(() => {});
+  jsonMutationQueues.set(key, settled);
+  try {
+    return await current;
+  } finally {
+    if (jsonMutationQueues.get(key) === settled) jsonMutationQueues.delete(key);
+  }
+}
 
 export function repositoryMode() {
   return hasDatabaseUrl() ? "postgres" : "json";
@@ -55,10 +71,15 @@ const specs = [
       name: "name",
       passwordHash: "password_hash",
       status: "status",
+      emailVerifiedAt: "email_verified_at",
+      termsAcceptedAt: "terms_accepted_at",
+      termsVersion: "terms_version",
+      privacyAcceptedAt: "privacy_accepted_at",
+      privacyVersion: "privacy_version",
       createdAt: "created_at",
       updatedAt: "updated_at"
     },
-    dates: ["createdAt", "updatedAt"]
+    dates: ["emailVerifiedAt", "termsAcceptedAt", "privacyAcceptedAt", "createdAt", "updatedAt"]
   },
   {
     key: "adminUsers",
@@ -85,9 +106,41 @@ const specs = [
       id: "id",
       userId: "user_id",
       createdAt: "created_at",
-      expiresAt: "expires_at"
+      expiresAt: "expires_at",
+      lastSeenAt: "last_seen_at",
+      revokedAt: "revoked_at"
     },
-    dates: ["createdAt", "expiresAt"]
+    dates: ["createdAt", "expiresAt", "lastSeenAt", "revokedAt"]
+  },
+  {
+    key: "emailVerificationTokens",
+    table: "email_verification_tokens",
+    order: "created_at asc",
+    columns: {
+      id: "id", userId: "user_id", tokenHash: "token_hash", expiresAt: "expires_at",
+      usedAt: "used_at", createdAt: "created_at"
+    },
+    dates: ["expiresAt", "usedAt", "createdAt"]
+  },
+  {
+    key: "passwordResetTokens",
+    table: "password_reset_tokens",
+    order: "created_at asc",
+    columns: {
+      id: "id", userId: "user_id", tokenHash: "token_hash", expiresAt: "expires_at",
+      usedAt: "used_at", createdAt: "created_at"
+    },
+    dates: ["expiresAt", "usedAt", "createdAt"]
+  },
+  {
+    key: "loginAttempts",
+    table: "login_attempts",
+    order: "created_at asc",
+    columns: {
+      id: "id", identityHash: "identity_hash", ipHash: "ip_hash", kind: "kind",
+      succeeded: "succeeded", createdAt: "created_at"
+    },
+    dates: ["createdAt"]
   },
   {
     key: "adminSessions",
@@ -98,9 +151,10 @@ const specs = [
       adminUserId: "admin_user_id",
       createdAt: "created_at",
       expiresAt: "expires_at",
-      lastSeenAt: "last_seen_at"
+      lastSeenAt: "last_seen_at",
+      revokedAt: "revoked_at"
     },
-    dates: ["createdAt", "expiresAt", "lastSeenAt"]
+    dates: ["createdAt", "expiresAt", "lastSeenAt", "revokedAt"]
   },
   {
     key: "products",
@@ -168,6 +222,9 @@ const specs = [
       alt: "alt",
       role: "role",
       sortOrder: "sort_order",
+      blobPath: "blob_path",
+      contentType: "content_type",
+      byteSize: "byte_size",
       createdAt: "created_at"
     },
     dates: ["createdAt"]
@@ -255,13 +312,96 @@ const specs = [
       memberTierId: "member_tier_id",
       paymentProvider: "payment_provider",
       paymentReference: "payment_reference",
+      requestId: "request_id",
       paidAt: "paid_at",
       completedAt: "completed_at",
       refundedAt: "refunded_at",
+      cancelledAt: "cancelled_at",
+      cancellationReason: "cancellation_reason",
+      termsAcceptedAt: "terms_accepted_at",
+      termsVersion: "terms_version",
+      privacyAcceptedAt: "privacy_accepted_at",
+      privacyVersion: "privacy_version",
       createdAt: "created_at",
       updatedAt: "updated_at"
     },
-    dates: ["paidAt", "completedAt", "refundedAt", "createdAt", "updatedAt"]
+    dates: ["paidAt", "completedAt", "refundedAt", "cancelledAt", "termsAcceptedAt", "privacyAcceptedAt", "createdAt", "updatedAt"]
+  },
+  {
+    key: "addresses",
+    table: "addresses",
+    order: "created_at asc",
+    columns: {
+      id: "id", userId: "user_id", recipientName: "recipient_name", recipientPhone: "recipient_phone",
+      province: "province", city: "city", district: "district", addressLine: "address_line",
+      postalCode: "postal_code", isDefault: "is_default", createdAt: "created_at", updatedAt: "updated_at"
+    },
+    dates: ["createdAt", "updatedAt"]
+  },
+  {
+    key: "orderAddresses",
+    table: "order_addresses",
+    order: "created_at asc",
+    columns: {
+      id: "id", orderId: "order_id", addressType: "address_type", recipientName: "recipient_name",
+      recipientPhone: "recipient_phone", province: "province", city: "city", district: "district",
+      addressLine: "address_line", postalCode: "postal_code", createdAt: "created_at"
+    },
+    dates: ["createdAt"]
+  },
+  {
+    key: "shipments",
+    table: "shipments",
+    order: "created_at asc",
+    columns: {
+      id: "id", orderId: "order_id", carrier: "carrier", trackingNo: "tracking_no", status: "status",
+      shippedAt: "shipped_at", deliveredAt: "delivered_at", createdAt: "created_at", updatedAt: "updated_at"
+    },
+    dates: ["shippedAt", "deliveredAt", "createdAt", "updatedAt"]
+  },
+  {
+    key: "payments",
+    table: "payments",
+    order: "created_at asc",
+    columns: {
+      id: "id", orderId: "order_id", provider: "provider", providerPaymentId: "provider_payment_id",
+      status: "status", paymentAmount: "payment_amount", currency: "currency", idempotencyKey: "idempotency_key",
+      confirmedByAdminId: "confirmed_by_admin_id", confirmedAt: "confirmed_at", rawPayload: "raw_payload",
+      createdAt: "created_at", updatedAt: "updated_at"
+    },
+    dates: ["confirmedAt", "createdAt", "updatedAt"]
+  },
+  {
+    key: "paymentEvents",
+    table: "payment_events",
+    order: "created_at asc",
+    columns: {
+      id: "id", provider: "provider", providerEventId: "provider_event_id", paymentId: "payment_id",
+      eventType: "event_type", payload: "payload", createdAt: "created_at"
+    },
+    dates: ["createdAt"]
+  },
+  {
+    key: "refunds",
+    table: "refunds",
+    order: "created_at asc",
+    columns: {
+      id: "id", orderId: "order_id", paymentId: "payment_id", providerRefundId: "provider_refund_id",
+      status: "status", refundAmount: "refund_amount", reason: "reason",
+      confirmedByAdminId: "confirmed_by_admin_id", confirmedAt: "confirmed_at",
+      createdAt: "created_at", updatedAt: "updated_at"
+    },
+    dates: ["confirmedAt", "createdAt", "updatedAt"]
+  },
+  {
+    key: "refundEvents",
+    table: "refund_events",
+    order: "created_at asc",
+    columns: {
+      id: "id", provider: "provider", providerEventId: "provider_event_id", refundId: "refund_id",
+      eventType: "event_type", payload: "payload", createdAt: "created_at"
+    },
+    dates: ["createdAt"]
   },
   {
     key: "orderItems",
@@ -434,10 +574,43 @@ const specs = [
       createdAt: "created_at"
     },
     dates: ["createdAt"]
+  },
+  {
+    key: "idempotencyKeys",
+    table: "idempotency_keys",
+    order: "created_at asc",
+    columns: {
+      id: "id", key: "key", scope: "scope", requestHash: "request_hash", responseBody: "response_body",
+      responseStatus: "response_status", lockedUntil: "locked_until", createdAt: "created_at", updatedAt: "updated_at"
+    },
+    dates: ["lockedUntil", "createdAt", "updatedAt"]
+  },
+  {
+    key: "emailDeliveries",
+    table: "email_deliveries",
+    order: "created_at asc",
+    columns: {
+      id: "id", userId: "user_id", kind: "kind", recipient: "recipient", idempotencyKey: "idempotency_key",
+      providerMessageId: "provider_message_id", status: "status", errorMessage: "error_message",
+      createdAt: "created_at", updatedAt: "updated_at"
+    },
+    dates: ["createdAt", "updatedAt"]
   }
 ];
 
 const deleteOrder = [
+  "email_deliveries",
+  "idempotency_keys",
+  "refund_events",
+  "refunds",
+  "payment_events",
+  "payments",
+  "shipments",
+  "order_addresses",
+  "addresses",
+  "password_reset_tokens",
+  "email_verification_tokens",
+  "login_attempts",
   "stock_reservations",
   "inventory_movements",
   "inventory_items",
@@ -468,6 +641,9 @@ const writeOrder = [
   "adminUsers",
   "sessions",
   "adminSessions",
+  "emailVerificationTokens",
+  "passwordResetTokens",
+  "loginAttempts",
   "products",
   "productVariants",
   "productImages",
@@ -477,6 +653,13 @@ const writeOrder = [
   "memberProfiles",
   "orders",
   "orderItems",
+  "addresses",
+  "orderAddresses",
+  "shipments",
+  "payments",
+  "paymentEvents",
+  "refunds",
+  "refundEvents",
   "tierHistory",
   "pointsMallItems",
   "pointsRedemptionOrders",
@@ -484,7 +667,9 @@ const writeOrder = [
   "pointsRedemptionItems",
   "coupons",
   "couponRedemptions",
-  "operationLogs"
+  "operationLogs",
+  "idempotencyKeys",
+  "emailDeliveries"
 ];
 
 const specsByKey = Object.fromEntries(specs.map((spec) => [spec.key, spec]));
@@ -514,10 +699,21 @@ export class JsonRepository {
     return JSON.parse(await readFile(this.dataFile, "utf8"));
   }
 
-  async write(db) {
+  async writeUnlocked(db) {
     await mkdir(path.dirname(this.dataFile), { recursive: true });
-    await writeFile(this.dataFile, JSON.stringify(db, null, 2));
+    const temporaryFile = `${this.dataFile}.${process.pid}.${Date.now()}.tmp`;
+    await writeFile(temporaryFile, JSON.stringify(db, null, 2));
+    await rename(temporaryFile, this.dataFile);
     return db;
+  }
+
+  async write(db) {
+    return serializeJsonMutation(this.dataFile, () => this.writeUnlocked(db));
+  }
+
+  async readCollections(names) {
+    const db = await this.read();
+    return Object.fromEntries(names.map((name) => [name, Array.isArray(db[name]) ? db[name] : []]));
   }
 
   async getCollection(name) {
@@ -526,17 +722,28 @@ export class JsonRepository {
   }
 
   async saveCollection(name, rows) {
-    const db = await this.read();
-    db[name] = rows;
-    await this.write(db);
+    await this.mutate((db) => {
+      db[name] = rows;
+    });
     return rows;
   }
 
   async transaction(callback) {
-    const db = await this.read();
-    const next = await callback(db);
-    await this.write(next || db);
-    return next || db;
+    return serializeJsonMutation(this.dataFile, async () => {
+      const db = await this.read();
+      const next = await callback(db);
+      await this.writeUnlocked(next || db);
+      return next || db;
+    });
+  }
+
+  async mutate(callback) {
+    return serializeJsonMutation(this.dataFile, async () => {
+      const db = await this.read();
+      const result = await callback(db);
+      await this.writeUnlocked(db);
+      return result;
+    });
   }
 }
 
@@ -545,38 +752,95 @@ export class PostgresRepository {
     return withPgClient((client) => client.query(sql, params));
   }
 
-  async read() {
+  async readWithClient(client, { lock = false } = {}) {
     const db = {};
     for (const spec of specs) {
-      const result = await this.query(`select * from ${spec.table} order by ${spec.order}`);
+      const result = await client.query(`select * from ${spec.table} order by ${spec.order}${lock ? " for update" : ""}`);
       db[spec.key] = result.rows.map((row) => fromRow(spec, row));
     }
     return db;
   }
 
-  async write(db) {
-    return this.transaction(async (client) => {
-      for (const table of deleteOrder) {
-        await client.query(`delete from ${table}`);
-      }
-      for (const key of writeOrder) {
-        const spec = specsByKey[key];
-        const rows = Array.isArray(db[key]) ? db[key] : [];
-        for (const row of rows) {
-          await this.insertMappedRow(client, spec, row);
-        }
+  async read() {
+    return withPgClient((client) => this.readWithClient(client));
+  }
+
+  async readCollections(names) {
+    const requested = [...new Set(names)];
+    for (const name of requested) {
+      if (!specsByKey[name]) throw new TypeError(`Unknown repository collection: ${name}`);
+    }
+    return withPgClient(async (client) => {
+      const db = {};
+      for (const name of requested) {
+        const spec = specsByKey[name];
+        const result = await client.query(`select * from ${spec.table} order by ${spec.order}`);
+        db[name] = result.rows.map((row) => fromRow(spec, row));
       }
       return db;
     });
   }
 
-  async insertMappedRow(client, spec, item) {
+  async write(db) {
+    return this.transaction(async (client) => {
+      await client.query("select pg_advisory_xact_lock(hashtext('scent_atoll_state_write'))");
+      const previousDb = await this.readWithClient(client, { lock: true });
+      await this.syncState(client, db, previousDb);
+      return db;
+    });
+  }
+
+  async upsertMappedRow(client, spec, item) {
     const columns = Object.values(spec.columns);
     const placeholders = columns.map((_, index) => `$${index + 1}`);
+    const primaryColumn = spec.key === "memberProfiles" ? "user_id" : "id";
+    const updates = columns
+      .filter((column) => column !== primaryColumn)
+      .map((column) => `${column} = excluded.${column}`);
     await client.query(
-      `insert into ${spec.table} (${columns.join(", ")}) values (${placeholders.join(", ")})`,
+      `insert into ${spec.table} (${columns.join(", ")}) values (${placeholders.join(", ")})
+       on conflict (${primaryColumn}) do update set ${updates.join(", ")}`,
       toRow(spec, item)
     );
+  }
+
+  async syncState(client, db, previousDb = {}) {
+    for (const key of writeOrder) {
+      const spec = specsByKey[key];
+      const rows = Array.isArray(db[key]) ? db[key] : [];
+      const primaryJsonKey = key === "memberProfiles" ? "userId" : "id";
+      const previousRows = Array.isArray(previousDb[key]) ? previousDb[key] : [];
+      const previousById = new Map(previousRows.map((row) => [row[primaryJsonKey], row]));
+      for (const row of rows) {
+        const previous = previousById.get(row[primaryJsonKey]);
+        if (!previous || !isDeepStrictEqual(toRow(spec, previous), toRow(spec, row))) {
+          await this.upsertMappedRow(client, spec, row);
+        }
+      }
+    }
+    for (const table of deleteOrder) {
+      const spec = specs.find((item) => item.table === table);
+      const rows = Array.isArray(db[spec.key]) ? db[spec.key] : [];
+      const previousRows = Array.isArray(previousDb[spec.key]) ? previousDb[spec.key] : [];
+      const primaryJsonKey = spec.key === "memberProfiles" ? "userId" : "id";
+      const primaryColumn = spec.key === "memberProfiles" ? "user_id" : "id";
+      const currentIds = new Set(rows.map((row) => row[primaryJsonKey]).filter(Boolean));
+      const removedIds = previousRows
+        .map((row) => row[primaryJsonKey])
+        .filter((id) => id && !currentIds.has(id));
+      if (removedIds.length) await client.query(`delete from ${table} where ${primaryColumn} = any($1::text[])`, [removedIds]);
+    }
+  }
+
+  async mutate(callback) {
+    return this.transaction(async (client) => {
+      await client.query("select pg_advisory_xact_lock(hashtext('scent_atoll_state_write'))");
+      const db = await this.readWithClient(client, { lock: true });
+      const previousDb = structuredClone(db);
+      const result = await callback(db);
+      await this.syncState(client, db, previousDb);
+      return result;
+    });
   }
 
   async transaction(callback) {

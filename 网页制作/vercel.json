@@ -1,9 +1,23 @@
 {
-  "buildCommand": "npm run check:env && npm run db:migrate && npm run db:seed && npm run build",
+  "buildCommand": "npm run check:env && npm run check:deploy && npm run build",
+  "ignoreCommand": "node scripts/check-vercel-auto-deploy.mjs",
   "outputDirectory": "dist",
   "installCommand": "npm ci --include=dev",
+  "functions": {
+    "api/[...path].mjs": {
+      "includeFiles": "src/assets/data.js"
+    },
+    "api/product-page.mjs": {
+      "includeFiles": "{dist/product.html,src/assets/data.js}"
+    }
+  },
+  "redirects": [
+    { "source": "/product-:slug.html", "destination": "/products/:slug", "permanent": true }
+  ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/[...path].mjs" }
+    { "source": "/products/:slug", "destination": "/api/product-page?slug=:slug" },
+    { "source": "/sitemap.xml", "destination": "/api/sitemap" },
+    { "source": "/api/(.*)", "destination": "/api/[...path]" }
   ],
   "headers": [
     {

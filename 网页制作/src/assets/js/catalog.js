@@ -34,9 +34,10 @@ export function allCatalogItems() {
   ];
 }
 
-export function replaceCatalogProducts(products = []) {
+export function replaceCatalogProducts(products = [], options = {}) {
   if (!Array.isArray(products)) return false;
   catalogData.products = products;
+  if (options.clearBundledSamples) catalogData.sampleSets = [];
   const notes = new Set(catalogData.notes || []);
   products.forEach((product) => (product.notes || []).forEach((note) => notes.add(note)));
   catalogData.notes = Array.from(notes);

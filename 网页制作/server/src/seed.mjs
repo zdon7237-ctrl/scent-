@@ -41,7 +41,23 @@ function loadCatalogProducts() {
   const source = path.join(rootDir, "src/assets/data.js");
   const sandbox = { window: {} };
   vm.runInNewContext(readFileSync(source, "utf8"), sandbox);
-  return sandbox.window.SA_DATA?.products || [];
+  const catalog = sandbox.window.SA_DATA || {};
+  const sampleSets = (catalog.sampleSets || []).map((item) => ({
+    ...item,
+    brand: "Scent Atoll",
+    brandId: null,
+    category: "sample",
+    country: "Curated",
+    stock: "现货",
+    concentration: "Sample Set",
+    family: "试香套装",
+    description: item.intro,
+    scenes: ["daily", "gift"],
+    mood: ["clean"],
+    sweetness: "medium",
+    status: ["Sample"]
+  }));
+  return [...(catalog.products || []), ...sampleSets];
 }
 
 function productRowsFromCatalog() {
@@ -91,18 +107,19 @@ async function findProductIdBySlug(client, slug, fallbackId) {
   return result.rows[0]?.id || fallbackId;
 }
 
-export async function seed() {
+export async function seed(options = {}) {
   if (!hasDatabaseUrl()) {
     return { skipped: true, reason: "DATABASE_URL is not set." };
   }
 
+  const includeAdmin = options.includeAdmin !== false;
   const isProduction = process.env.NODE_ENV === "production";
   const seedAdminEmail = String(process.env.SEED_ADMIN_EMAIL || "admin@scent.local").trim().toLowerCase();
   const seedAdminPassword = String(process.env.SEED_ADMIN_PASSWORD || (isProduction ? "" : defaultSeedAdminPassword));
   const seedAdminRole = String(process.env.SEED_ADMIN_ROLE || "owner").trim().toLowerCase();
 
-  if (isProduction && (!process.env.SEED_ADMIN_PASSWORD || seedAdminPassword === defaultSeedAdminPassword)) {
-    throw new Error("生产环境不能使用默认 seed 管理员密码。");
+  if (isProduction && includeAdmin) {
+    throw new Error("生产环境不能运行开发 seed 管理员流程；请分别使用 commerce 与 owner 一次性 bootstrap。");
   }
 
   return withPgTransaction(async (client) => {
@@ -189,7 +206,7 @@ export async function seed() {
       );
     }
 
-    if (seedAdminEmail && seedAdminPassword) {
+    if (includeAdmin && seedAdminEmail && seedAdminPassword) {
       await client.query(
         `insert into admin_users (id, email, name, password_hash, role, status)
          values ($1,$2,$3,$4,$5,'active')

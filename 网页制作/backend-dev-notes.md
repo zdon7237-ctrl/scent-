@@ -1,6 +1,8 @@
 # 后端开发备忘
 
-更新日期：2026-05-06
+更新日期：2026-07-10
+
+阶段进度、验证结果和剩余风险统一记录在 `plan/project-log.md`。本文件只保留本地运行和后端操作备忘。
 
 ## 启动命令
 
@@ -31,7 +33,7 @@ DATABASE_URL=postgres://localhost:5432/scent_archive_test npm run db:migrate
 DATABASE_URL=postgres://localhost:5432/scent_archive_test npm run db:seed
 ```
 
-当前阶段已建立 PostgreSQL schema、migration、seed、连接模块和 repository 入口。`DATABASE_URL` 启用后，主业务 API 会通过 repository 读写 PostgreSQL；未设置时继续使用 JSON fallback。
+`DATABASE_URL` 启用后，主业务 API 通过 repository 读写 PostgreSQL；未设置时只允许本地开发和测试使用 JSON fallback。Production 必须配置 PostgreSQL，否则应用直接拒绝启动。
 
 本地测试库示例：
 
@@ -43,14 +45,28 @@ DATABASE_URL=postgres://localhost:5432/scent_archive_test npm run db:seed
 
 PostgreSQL smoke test 只会在 `DATABASE_URL` 指向看起来像测试库的数据库时执行；否则会跳过，避免污染生产数据库。
 
+`db:seed` 仅用于本地或可丢弃的测试数据库。全新 Production 数据库按以下顺序初始化：
+
+```text
+release migration -> db:bootstrap-commerce -> db:bootstrap-owner
+```
+
+后续 Production 发布只执行 release migration，不再运行 seed 或 bootstrap。完整命令见 `plan/launch-runbook.md`。
+
 支付和退款金额字段统一使用 `payment_amount` / `refund_amount`。
 
 ## 后台入口
 
-后台管理页面：
+会员与管理员共用登录入口，服务端验证账号后自动分流：
 
 ```text
-http://localhost:8788/admin.html
+http://localhost:8788/login.html
+```
+
+Owner 登录后进入后台管理页面：
+
+```text
+http://localhost:8788/admin.html#overview
 ```
 
 后台接口地址：
@@ -79,6 +95,8 @@ SEED_ADMIN_ROLE=owner
 
 后台访问不再使用前端密钥。管理员登录成功后，后端会写入独立的 `sa_admin_session` cookie。
 
+统一登录只统一页面入口，不合并管理员和会员身份。Owner 邮箱不要同时注册为普通会员邮箱；管理员与会员继续使用独立的数据表和 Session Cookie。
+
 `ADMIN_KEY` / `x-admin-key` 不再是后台访问方式。`dev-admin` 只允许作为本地 seed 管理员密码使用，不能作为生产密码。
 
 ## 后台权限
@@ -106,9 +124,9 @@ role permissions
 - 可通过 `APP_ORIGIN` 配置额外允许来源，多个来源用逗号分隔。
 - 来源校验只是后台 session 的补充保护，不能替代登录和权限。
 
-## 支付 Webhook
+## 支付与 Webhook
 
-支付 webhook 使用独立密钥，不复用后台登录能力：
+旧支付 webhook 只保留给本地开发测试：
 
 ```text
 POST /api/webhooks/payment
@@ -121,12 +139,19 @@ header: x-webhook-secret
 PAYMENT_WEBHOOK_SECRET=dev-webhook
 ```
 
-生产环境必须设置强随机值，并通过支付服务端侧配置传入。webhook secret 只用于支付回调，不能用于后台 API。
+Production 和 Preview 都禁止设置 `PAYMENT_WEBHOOK_SECRET`。第一阶段使用微信人工转账，由后台登录管理员核对参考号后确认收款。
+
+第二阶段的微信支付回调使用 API v3 平台证书、公钥和原始请求签名验签，不使用旧 webhook secret。取得商户号、AppID 和证书并完成退款、查询与对账闭环前，必须保持：
+
+```text
+WECHAT_PAY_ENABLED=false
+```
 
 ## 生产环境提醒
 
 - 不要把本地 seed 密码用于生产。
-- 生产环境必须显式设置安全的 `SEED_ADMIN_PASSWORD`，或后续改成正式管理员创建流程。
-- 生产环境必须显式设置强随机 `PAYMENT_WEBHOOK_SECRET`。
+- Production 不得设置 `SEED_ADMIN_EMAIL`、`SEED_ADMIN_PASSWORD` 或 `PAYMENT_WEBHOOK_SECRET`。
+- 初始 owner 只能通过一次性 `db:bootstrap-owner` 创建，完成后删除全部 `BOOTSTRAP_*` 变量。
+- Production 必须配置 PostgreSQL、Resend、Blob、Upstash、至少 32 位 `CRON_SECRET`、真实 `APP_ORIGIN` 和 `SITE_URL`。
 - 后台接口不能回退到 `ADMIN_KEY`、`x-admin-key`、共享 key 或浏览器 localStorage 密钥。
-- webhook secret 只能用于支付回调，不能用于后台 API。
+- 微信支付状态只能由可信 API v3 回调或主动查询改变，不能由浏览器或普通后台状态编辑直接伪造。

@@ -1,6 +1,8 @@
 node_modules/
-.env.production
-.env*.local
+.env
+.env.*
+!.env.*.example
+.vercel/
 
 网页制作/node_modules/
 网页制作/dist/
@@ -16,5 +18,9 @@ node_modules/
 网页制作/terms.html
 网页制作/src/assets/og-image.png
 网页制作/server/data/db.json
-网页制作/.env.production
-网页制作/.env*.local
+网页制作/.env
+网页制作/.env.*
+!网页制作/.env.*.example
+网页制作/.vercel/
+.vercel
+.env*

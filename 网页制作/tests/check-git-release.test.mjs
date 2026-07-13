@@ -105,7 +105,15 @@ describe("git release check", () => {
   it("rejects tracked generated or local-only files", () => withReleaseRepo((fixture) => {
     writeFixtureFile(fixture.repoRoot, "网页制作/dist/index.html", "generated\n");
     writeFixtureFile(fixture.repoRoot, "网页制作/assets/js/public-app.js", "stale copy\n");
-    runGit(fixture.repoRoot, ["add", "网页制作/dist/index.html", "网页制作/assets/js/public-app.js"]);
+    writeFixtureFile(fixture.repoRoot, "网页制作/.env.preview", "SECRET=tracked\n");
+    writeFixtureFile(fixture.repoRoot, ".vercel/project.json", "{}\n");
+    runGit(fixture.repoRoot, [
+      "add",
+      "网页制作/dist/index.html",
+      "网页制作/assets/js/public-app.js",
+      "网页制作/.env.preview",
+      ".vercel/project.json"
+    ]);
     runGit(fixture.repoRoot, [
       "-c",
       "user.name=Scent Atoll Test",
@@ -121,5 +129,7 @@ describe("git release check", () => {
     assert.match(result.stderr, /Generated, local, or secret-like files are tracked/);
     assert.match(result.stderr, /网页制作\/dist\/index\.html/);
     assert.match(result.stderr, /网页制作\/assets\/js\/public-app\.js/);
+    assert.match(result.stderr, /网页制作\/\.env\.preview/);
+    assert.match(result.stderr, /\.vercel\/project\.json/);
   }));
 });
