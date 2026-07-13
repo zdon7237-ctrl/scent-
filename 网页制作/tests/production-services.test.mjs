@@ -197,9 +197,15 @@ describe("product image storage", () => {
     );
   });
 
-  it("fails fast without a production Blob token", () => {
-    assert.throws(
-      () => createProductImageStorage({ env: { DEPLOYMENT_ENV: "production" } }),
+  it("keeps the application available but rejects image writes without production Blob credentials", async () => {
+    const storage = createProductImageStorage({ env: { DEPLOYMENT_ENV: "production" } });
+    await assert.rejects(
+      storage.upload({
+        productId: "product-1",
+        fileName: "front.png",
+        contentType: "image/png",
+        body: pngBytes()
+      }),
       (error) => error instanceof ServiceConfigurationError
         && error.missing.includes("BLOB_READ_WRITE_TOKEN or VERCEL_OIDC_TOKEN + BLOB_STORE_ID")
     );
