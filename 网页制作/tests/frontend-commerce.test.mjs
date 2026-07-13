@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { ApiError, apiFetch } from "../src/assets/js/api-client.js";
+import { adminUploadProductImage } from "../src/assets/js/admin-client.js";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const originalFetch = globalThis.fetch;
@@ -77,6 +78,30 @@ describe("API errors", () => {
 
     assert.equal(requestOptions.headers["content-type"], "application/json");
     assert.equal(requestOptions.headers["idempotency-key"], "order-1");
+  });
+
+  it("encodes Unicode product image metadata into HTTP-safe headers", async () => {
+    let requestOptions;
+    globalThis.fetch = async (_path, options) => {
+      requestOptions = options;
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 201,
+        headers: { "content-type": "application/json" }
+      });
+    };
+
+    await adminUploadProductImage("product-1", {
+      name: "测试商品图.png",
+      type: "image/png"
+    }, {
+      alt: "馥屿 商品主图",
+      role: "gallery"
+    });
+
+    assert.match(requestOptions.headers["x-file-name"], /^[\x00-\x7F]+$/);
+    assert.match(requestOptions.headers["x-image-alt"], /^[\x00-\x7F]+$/);
+    assert.equal(decodeURIComponent(requestOptions.headers["x-file-name"]), "测试商品图.png");
+    assert.equal(decodeURIComponent(requestOptions.headers["x-image-alt"]), "馥屿 商品主图");
   });
 });
 
