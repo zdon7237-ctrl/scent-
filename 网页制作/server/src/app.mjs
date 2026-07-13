@@ -960,6 +960,15 @@ function cleanText(value) {
   return String(value ?? "").trim();
 }
 
+function decodeHeaderText(value) {
+  const raw = cleanText(value);
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -2946,12 +2955,12 @@ async function handleApiWithDb(req, res, pathname, db, persist, afterCommit = ()
         if (!guard("products:write")) return;
         const product = productByIdOrSlug(db, decodeURIComponent(rawImageUploadMatch[1]));
         if (!product) return sendError(res, 404, "商品不存在。");
-        const fileName = cleanText(req.headers["x-file-name"] || "product-image");
+        const fileName = decodeHeaderText(req.headers["x-file-name"] || "product-image");
         const contentType = cleanText(req.headers["content-type"]);
         const bytes = await requestBytes(req);
         const uploaded = await productImageStorage.upload({ productId: product.id, fileName, contentType, body: bytes });
         const image = {
-          id: randomUUID(), productId: product.id, imageUrl: uploaded.url, alt: cleanText(req.headers["x-image-alt"] || product.name),
+          id: randomUUID(), productId: product.id, imageUrl: uploaded.url, alt: decodeHeaderText(req.headers["x-image-alt"] || product.name),
           role: cleanText(req.headers["x-image-role"] || (db.productImages.some((item) => item.productId === product.id) ? "gallery" : "hero")),
           sortOrder: db.productImages.filter((item) => item.productId === product.id).length + 1,
           blobPath: uploaded.pathname, contentType: uploaded.contentType, byteSize: uploaded.size, createdAt: now()

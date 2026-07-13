@@ -527,6 +527,9 @@
 
   // src/assets/js/admin-client.js
   init_api_client();
+  function encodeHeaderText(value) {
+    return encodeURIComponent(String(value || ""));
+  }
   function adminLogout() {
     return apiFetch("/api/admin/auth/logout", {
       method: "POST"
@@ -625,8 +628,8 @@
       credentials: "same-origin",
       headers: {
         "content-type": file.type,
-        "x-file-name": file.name,
-        "x-image-alt": options.alt || "",
+        "x-file-name": encodeHeaderText(file.name),
+        "x-image-alt": encodeHeaderText(options.alt),
         "x-image-role": options.role || "gallery"
       },
       body: file
