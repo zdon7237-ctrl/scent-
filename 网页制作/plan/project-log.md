@@ -2,6 +2,22 @@
 
 本文件按日期倒序记录项目阶段、验证结果和下一步。它用于日常跟进，不替代发布清单或发布 Runbook。
 
+## 2026-07-13：低成本试营业 Production 准备
+
+### 已完成
+
+- Vercel Project Settings 的 Node.js Version 已从 `24.x` 改为 `22.x`；设置从下一次部署生效，没有手工重部署或切换 Production 域名。
+- 只读盘点 Neon Production `main`：迁移前为 `001_initial_postgres_foundation`，已有 8 个商品、1 个有效 Owner、0 个会员、0 个订单，因此没有重复执行 commerce bootstrap 或 owner bootstrap。
+- 现有 Production Owner 为 `1244470336@qq.com`；保留该账号，不创建第二个初始 Owner。
+- Neon 免费版确认提供 6 小时时点恢复；迁移前从 `main` 创建完整数据与 schema 分支 `pre-migration-2026-07-13`（ID `br-rapid-salad-ahi7xcr1`），自动保留到 2026-07-14 08:39（Asia/Shanghai）。
+- 使用受控脚本和 Production 明确确认执行前向迁移，成功验证到 `003_commercial_transaction_hardening`；未运行开发 seed，数据库连接串使用后已从本机剪贴板清除。
+
+### 当前状态
+
+- 正式域名当前旧部署对 `/api/health/ready` 返回 `404`，说明数据库虽已前向迁移，但包含健康检查和新交易流程的 PR 版本尚未 Promote；迁移是向后兼容的，未手工 Redeploy Production。
+- 下一步仍需先完成 PR 合并与受控 Production candidate 发布，之后才能在正式版本验证健康检查、Owner 登录以及订单到退款演练。
+- Blob、Upstash、Resend 暂按少量试营业继续共享免费资源；测试期间不得删除正式图片或批量发送邮件。Hobby 套餐升级暂缓，但平台商业用途条款仍由店主确认。
+
 ## 2026-07-13：Vercel Preview 最终浏览器复核
 
 ### 当前结论
