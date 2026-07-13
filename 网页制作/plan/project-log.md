@@ -2,6 +2,28 @@
 
 本文件按日期倒序记录项目阶段、验证结果和下一步。它用于日常跟进，不替代发布清单或发布 Runbook。
 
+## 2026-07-13：Vercel Preview 最终浏览器复核
+
+### 当前结论
+
+- PR #1 最新提交 `102c225` 的 Vercel Preview 已为 Ready，GitHub 显示 6 项成功、1 项 neutral，CI、Vercel 与 Netlify Preview 检查均无失败。
+- 已在 `https://scent-aymdrj21i-scent-atoll.vercel.app` 验证首页、数据库商品、意向清单、匿名结账边界、登录入口和 400px 手机布局；基础发布候选可用，但仍未达到 Production 门禁。
+
+### 浏览器验证记录
+
+- 首页与香水列表能读取 Preview 数据库商品；Vespree 可加入意向清单，数量、单价和小计显示正确。
+- 购物车空状态和有商品状态正常；Escape 可关闭抽屉并把焦点恢复到意向清单按钮。
+- 匿名访问 `/checkout.html` 只显示“请先登录会员账号”，不会创建订单；登录页包含账号、密码、忘记密码和注册入口。
+- 400px 宽度下品牌、意向清单和手机菜单正确收缩，未发现明显横向溢出或布局错位。
+- 试香页显示“试香套装正在整理”的明确空状态，因为现有 Preview 数据库仍只有 8 个旧商品，尚未补录 3 个 `category=sample` 商品。
+- Preview 控制台发现两项非核心问题：Vercel Preview feedback 脚本被本站 CSP 拦截；匿名后台身份探测返回预期的 `401`。两者均未影响前台交易入口。
+
+### 保持阻塞
+
+- Vercel Node.js 仍为 24.x，需改为 22.x；账户仍为 Hobby，商业运营前需升级合适套餐并处理账单资料。
+- Production 与 Preview 的 Blob、Upstash、Resend 尚未完全隔离；Preview 试香商品、Production migration/bootstrap、正式 Owner、备份恢复和订单到退款演练仍未完成。
+- `BUSINESS_NAME`、客服资料、`DATA_RESIDENCY_DECISION` 及 GitHub Production Environment、branch protection、release Secrets/Variables 仍需确认。上述门禁通过前不合并 PR、不 Promote Production。
+
 ## 2026-07-13：发布前安全与可用性修复
 
 ### 本次完成
