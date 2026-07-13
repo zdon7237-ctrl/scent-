@@ -2,6 +2,24 @@
 
 本文件按日期倒序记录项目阶段、验证结果和下一步。它用于日常跟进，不替代发布清单或发布 Runbook。
 
+## 2026-07-13：Production 正式上线与双 Owner
+
+### 已完成
+
+- PR #1 商业上线版本和 PR #2 Blob 运行时降级修复均已合并到 `main`；正式 deployment `dpl_EJB5rQ4MSWguWchaAhUVQVwh72Ah` 已 Promote 到 `https://scentatoll.com`。
+- 正式 `/api/health/ready` 返回 `ready`、`database: postgres`、`products: 8`、`commerceFoundation: true`，Node.js 为 22.x。
+- Production 已配置经营名称“馥屿”、客服邮箱、客服微信和 `cross_border_approved`；`WECHAT_PAY_ENABLED=false`，继续使用人工收款核款。
+- Blob OIDC 运行时凭据缺失曾导致 Function 启动崩溃；现已改为只有图片写操作 fail-closed，登录、订单、库存、会员和积分服务可正常启动。
+- Production 新增第二个有效 Owner，并在正式域名实际登录进入 `admin.html#overview`；密码没有写入 Git、日志或文档。
+- 新增 `项目汇报-2026-07-13.md`，并把 `使用与维护说明.md` 更新为上线后的日常操作、维护和故障处理手册。
+
+### 待完成
+
+- 补齐 Vercel Blob Function 写凭据，恢复后台商品图片上传与删除。
+- 在 Production 完成一笔内部订单从下单、人工核款、发货、确认收货、积分到退款的完整演练。
+- 建立超过 Neon 免费 6 小时历史窗口的长期备份；迁移前临时分支将在 2026-07-14 08:39 自动删除。
+- 两个 Owner 改用不同密码并定期撤销其他 Session；补录试香商品、拆分 Preview 资源和套餐升级可按试营业量逐步处理。
+
 ## 2026-07-13：低成本试营业 Production 准备
 
 ### 已完成
