@@ -1,5 +1,5 @@
 <div class="notice">
-  <span>本月买手清单已更新</span>
+  <span>本月买手清单已更新，先从气味方向开始</span>
   <span>新客 6 支试香套装</span>
   <span>工作室试香可预约</span>
 </div>
@@ -16,31 +16,31 @@
   <button class="nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="primary-nav" aria-label="打开主导航">
     <span></span><span></span>
   </button>
-  <nav class="primary-nav" id="primary-nav" data-nav aria-label="主导航">
-    <a href="index.html" data-nav="home"{% if pageKey == "home" %} class="active"{% endif %}>首页</a>
-    <a href="shop.html" data-nav="shop"{% if pageKey == "shop" %} class="active"{% endif %}>香水</a>
-    <a href="brands.html" data-nav="brands"{% if pageKey == "brands" %} class="active"{% endif %}>品牌</a>
-    <a href="samples.html" data-nav="samples"{% if pageKey == "samples" %} class="active"{% endif %}>试香</a>
-    <a href="journal.html" data-nav="journal"{% if pageKey == "journal" %} class="active"{% endif %}>Journal</a>
-    <a href="about.html" data-nav="about"{% if pageKey == "about" %} class="active"{% endif %}>关于我们</a>
-    <a href="service.html" data-nav="service"{% if pageKey == "service" %} class="active"{% endif %}>服务</a>
-  </nav>
-  <div class="header-actions">
-    <form class="site-search" data-site-search>
-      <label>
-        <span>搜索</span>
-        <input type="search" data-site-search-input placeholder="品牌、香调、场景">
-      </label>
-    </form>
+  <div class="mobile-menu-panel" data-mobile-menu-panel>
+    <nav class="primary-nav" id="primary-nav" data-nav aria-label="主导航">
+      <a href="shop.html" data-nav="shop"{% if pageKey == "shop" %} class="active"{% endif %}>香水</a>
+      <a href="samples.html" data-nav="samples"{% if pageKey == "samples" %} class="active"{% endif %}>试香</a>
+      <a href="brands.html" data-nav="brands"{% if pageKey == "brands" %} class="active"{% endif %}>品牌</a>
+      <a href="journal.html" data-nav="journal"{% if pageKey == "journal" %} class="active"{% endif %}>札记</a>
+      <a href="about.html" data-nav="about"{% if pageKey == "about" %} class="active"{% endif %}>关于</a>
+    </nav>
+    <div class="header-actions">
+      <form class="site-search" data-site-search>
+        <label>
+          <span>搜索</span>
+          <input type="search" data-site-search-input placeholder="品牌、香调、场景">
+        </label>
+      </form>
 {% if not site.isPublicBuild %}
-    <div class="auth-actions" data-auth-actions aria-live="polite">
-      <a class="account-link" href="login.html">登录</a>
-      <a class="text-link" href="register.html">注册</a>
-    </div>
+      <div class="auth-actions" data-auth-actions aria-live="polite">
+        <a class="account-link" href="login.html">登录</a>
+        <a class="text-link" href="register.html">注册</a>
+      </div>
 {% endif %}
-    <button class="cart-button cart-button-desktop" type="button" data-open-cart data-cart-button aria-label="打开意向清单，当前 0 件">
-      <span class="cart-label">意向清单</span>
-      <span data-cart-count aria-hidden="true">0</span>
-    </button>
+      <button class="cart-button cart-button-desktop" type="button" data-open-cart data-cart-button aria-label="打开意向清单，当前 0 件">
+        <span class="cart-label">意向清单</span>
+        <span data-cart-count aria-hidden="true">0</span>
+      </button>
+    </div>
   </div>
 </header>

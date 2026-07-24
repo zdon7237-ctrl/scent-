@@ -10,6 +10,7 @@ import { createEmailService } from "./services/email-service.mjs";
 import { createProductImageStorage } from "./services/product-image-storage.mjs";
 import { createLoginRateLimiter } from "./services/login-rate-limiter.mjs";
 import { createErrorReporter, createLogger } from "./services/observability.mjs";
+import { resolvePublicDirectory } from "./public-directory.mjs";
 import {
   assertWechatPayTransaction,
   createWechatPayClient,
@@ -20,7 +21,7 @@ import {
 const modulePath = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(modulePath);
 const rootDir = path.resolve(__dirname, "../..");
-const publicDir = path.resolve(process.env.PUBLIC_DIR || path.join(rootDir, "dist"));
+const publicDir = resolvePublicDirectory(rootDir);
 const dataFile = path.resolve(process.env.MEMBER_DB || path.join(rootDir, "server/data/db.json"));
 const repository = createRepository({ dataFile });
 const activeRepositoryMode = repositoryMode();

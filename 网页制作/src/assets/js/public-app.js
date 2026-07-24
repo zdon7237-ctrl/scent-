@@ -241,11 +241,29 @@ if (hasCatalogData) {
     const nav = $("[data-nav]");
     const page = document.body.dataset.page;
 
+    function setNavigationOpen(open, { restoreFocus = false } = {}) {
+      if (!header || !toggle) return;
+      header.classList.toggle("nav-open", open);
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.setAttribute("aria-label", open ? "关闭主导航" : "打开主导航");
+      if (!open && restoreFocus) toggle.focus();
+    }
+
     if (toggle && header) {
       toggle.addEventListener("click", () => {
-        const open = header.classList.toggle("nav-open");
-        toggle.setAttribute("aria-expanded", String(open));
-        toggle.setAttribute("aria-label", open ? "关闭主导航" : "打开主导航");
+        setNavigationOpen(!header.classList.contains("nav-open"));
+      });
+
+      document.addEventListener("click", (event) => {
+        if (header.classList.contains("nav-open") && !header.contains(event.target)) {
+          setNavigationOpen(false);
+        }
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && header.classList.contains("nav-open")) {
+          setNavigationOpen(false, { restoreFocus: true });
+        }
       });
     }
 
@@ -253,9 +271,7 @@ if (hasCatalogData) {
       $all("a", nav).forEach((link) => {
         if (link.dataset.nav === page) link.classList.add("active");
         link.addEventListener("click", () => {
-          header?.classList.remove("nav-open");
-          toggle?.setAttribute("aria-expanded", "false");
-          toggle?.setAttribute("aria-label", "打开主导航");
+          setNavigationOpen(false);
         });
       });
     }
@@ -651,6 +667,8 @@ if (hasCatalogData) {
     if (!toast) {
       toast = document.createElement("div");
       toast.className = "toast";
+      toast.setAttribute("role", "status");
+      toast.setAttribute("aria-live", "polite");
       document.body.appendChild(toast);
     }
     toast.textContent = message;

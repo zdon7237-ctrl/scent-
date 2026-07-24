@@ -314,6 +314,14 @@ describe("server API business rules", { concurrency: false }, () => {
     assert.match(seedResult.stdout, /Seed skipped: DATABASE_URL is not set/);
   });
 
+  it("renders an active product at its stable storefront URL", async () => {
+    const result = await api("/products/vespree", { expectedStatus: 200 });
+    assert.match(result.response.headers.get("content-type") || "", /text\/html/);
+    assert.match(result.payload, /<title>Vespree 晚霞之约 \| 馥屿<\/title>/);
+    assert.match(result.payload, /data-product-page data-entry-id="vespree"/);
+    assert.match(result.payload, /application\/ld\+json/);
+  });
+
   it("runs idempotent PostgreSQL migration and seed smoke when a safe test database is available", async (t) => {
     if (!hasDatabaseUrl()) return t.skip(postgresSmokeSkipReason || "DATABASE_URL is not set; PostgreSQL smoke test skipped.");
     if (!isSafeTestDatabaseUrl()) return t.skip("DATABASE_URL does not look like a test database; PostgreSQL smoke test skipped.");

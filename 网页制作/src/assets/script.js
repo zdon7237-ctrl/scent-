@@ -1120,20 +1120,33 @@
       const toggle = $2("[data-nav-toggle]");
       const nav = $2("[data-nav]");
       const page = document.body.dataset.page;
+      function setNavigationOpen(open, { restoreFocus = false } = {}) {
+        if (!header || !toggle) return;
+        header.classList.toggle("nav-open", open);
+        toggle.setAttribute("aria-expanded", String(open));
+        toggle.setAttribute("aria-label", open ? "\u5173\u95ED\u4E3B\u5BFC\u822A" : "\u6253\u5F00\u4E3B\u5BFC\u822A");
+        if (!open && restoreFocus) toggle.focus();
+      }
       if (toggle && header) {
         toggle.addEventListener("click", () => {
-          const open = header.classList.toggle("nav-open");
-          toggle.setAttribute("aria-expanded", String(open));
-          toggle.setAttribute("aria-label", open ? "\u5173\u95ED\u4E3B\u5BFC\u822A" : "\u6253\u5F00\u4E3B\u5BFC\u822A");
+          setNavigationOpen(!header.classList.contains("nav-open"));
+        });
+        document.addEventListener("click", (event) => {
+          if (header.classList.contains("nav-open") && !header.contains(event.target)) {
+            setNavigationOpen(false);
+          }
+        });
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape" && header.classList.contains("nav-open")) {
+            setNavigationOpen(false, { restoreFocus: true });
+          }
         });
       }
       if (nav) {
         $all2("a", nav).forEach((link) => {
           if (link.dataset.nav === page) link.classList.add("active");
           link.addEventListener("click", () => {
-            header == null ? void 0 : header.classList.remove("nav-open");
-            toggle == null ? void 0 : toggle.setAttribute("aria-expanded", "false");
-            toggle == null ? void 0 : toggle.setAttribute("aria-label", "\u6253\u5F00\u4E3B\u5BFC\u822A");
+            setNavigationOpen(false);
           });
         });
       }
@@ -2047,6 +2060,8 @@
       if (!toast) {
         toast = document.createElement("div");
         toast.className = "toast";
+        toast.setAttribute("role", "status");
+        toast.setAttribute("aria-live", "polite");
         document.body.appendChild(toast);
       }
       toast.textContent = message;
